@@ -1,0 +1,125 @@
+---
+import { Image } from 'astro:assets';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import portrait from '../assets/portrait.jpg';
+import OrgCarousel from '../components/OrgCarousel.astro';
+
+---
+
+<BaseLayout title="About · Reewin Shi" description="About Reewin Shi: software engineer and artist.">
+  <section class="intro">
+    <div class="photo">
+      <Image
+        src={portrait}
+        alt="Reewin Shi smiling in front of a terracotta wall"
+        width={640}
+        widths={[320, 480, 640]}
+        sizes="(min-width: 48rem) 20rem, 80vw"
+        loading="eager"
+      />
+    </div>
+
+    <div class="text">
+      <p class="eyebrow">Hi, I'm</p>
+      <h1>Reewin Shi</h1>
+      <p class="lede">Software engineer, artist, and caretaker of a small village of animal friends.</p>
+
+      <p>
+        I'm a Computer Science student at the University of Michigan with a minor in Business. This past
+        summer I was a software engineering intern at Capital One, building backend services in Java and
+        Spring Boot. At school I've spent a lot of time in systems, writing things like a virtual memory pager
+        and a multi-threaded file server.
+      </p>
+      <p>
+        Outside of code I draw, play flute, and do traditional Chinese dance. This site is where both halves
+        meet: every project has its own villager, and you can visit them all in the Village.
+      </p>
+
+      <div class="actions">
+        <a class="button primary" href="/resume.pdf" target="_blank" rel="noopener">View résumé (PDF)</a>
+        <a class="button" href="/">See my work</a>
+      </div>
+    </div>
+  </section>
+
+  <OrgCarousel />
+</BaseLayout>
+
+<style>
+  .intro {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    gap: 3rem;
+    align-items: center;
+  }
+
+  /* Photo styled like a pinned polaroid */
+  .photo {
+    background: var(--surface);
+    padding: 0.75rem 0.75rem 2.5rem;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+    rotate: -2deg;
+  }
+  .photo img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    border-radius: 0.25rem;
+  }
+
+  .eyebrow {
+    margin: 0;
+    color: var(--moss);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  h1 {
+    margin: 0.1rem 0 0.75rem;
+    font-size: clamp(2.5rem, 6vw, 3.75rem);
+  }
+  .lede {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.3rem;
+    color: var(--muted);
+    margin-top: 0;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .button {
+    display: inline-block;
+    padding: 0.65rem 1.25rem;
+    border-radius: 999px;
+    border: 2px solid var(--accent);
+    color: var(--accent-ink);
+    font-weight: 700;
+    text-decoration: none;
+    transition: translate 0.15s ease;
+  }
+  .button:hover {
+    translate: 0 -2px;
+  }
+  .button.primary {
+    background: var(--accent);
+    color: var(--surface);
+  }
+
+  /* Stack the photo above the text on small screens */
+  @media (max-width: 48rem) {
+    .intro {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+    .photo {
+      max-width: 17rem;
+      margin: 0 auto;
+    }
+  }
+</style>

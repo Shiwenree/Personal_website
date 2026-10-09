@@ -1,0 +1,78 @@
+---
+// Top navigation: name on the left, the four tabs on the right. Highlights the tab for the current page.
+const tabs = [
+  { href: '/', label: 'Works' },
+  { href: '/village', label: 'Village' },
+  { href: '/art', label: 'Art' },
+  { href: '/about', label: 'About' },
+];
+
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+// Works is the home page, and project pages (/projects/...) count as Works too.
+const isActive = (href: string) =>
+  href === '/' ? path === '/' || path.startsWith('/projects') : path.startsWith(href);
+---
+
+<header>
+  <nav>
+    <a class="name" href="/">Reewin Shi</a>
+    <ul>
+      {tabs.map((tab) => (
+        <li>
+          <a href={tab.href} aria-current={isActive(tab.href) ? 'page' : undefined}>
+            {tab.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </nav>
+</header>
+
+<style>
+  header {
+    border-bottom: 1px dashed var(--line);
+    padding: 1rem var(--gutter);
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+  .name {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+  }
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  ul a {
+    display: block;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    color: var(--moss);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+  }
+  ul a:hover {
+    color: var(--text);
+    background: var(--line);
+  }
+  ul a[aria-current='page'] {
+    color: var(--surface);
+    background: var(--accent);
+  }
+</style>

@@ -1,0 +1,1622 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { villagers } from '../data/villagers';
+import '@fontsource/sniglet/800.css'; // bubbly font for the villager's name under its spot
+
+// Placeholder projects. Later these come from the projects content collection, and each one
+// gets its villager avatar (shown standing in the meadow on the right) and a link to its project page.
+// `villager` is a key from src/data/villagers.ts. `summary` and `tags` show in the text box that opens
+// when a project is clicked; add an `href` to give it a "View project" link.
+type Work = { title: string; tag: string; color: string; villager?: string; summary: string; tags: string[]; href?: string };
+const placeholder = 'A few sentences about the project: what it is, why you made it, what you built, and what came out of it.';
+const works: Work[] = [
+  { title: 'Project One – Dog', tag: 'Coming soon', color: '#e9b49a', villager: 'sammy', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Two – Fox', tag: 'Coming soon', color: '#b9c99a', villager: 'foxy', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Three – Duck', tag: 'Coming soon', color: '#a9c4d6', villager: 'duck', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Four – Python', tag: 'Coming soon', color: '#e6cf8f', villager: 'python', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Five – Night Owl', tag: 'Coming soon', color: '#d4b3d1', villager: 'owl', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Six – Goldfish', tag: 'Coming soon', color: '#9fd0cf', villager: 'fish', summary: placeholder, tags: ['Tag', 'Tag'] },
+];
+const first = works[0].villager ? villagers[works[0].villager] : undefined;
+
+// Everything else, shown as a simple grid under the meadow. Placeholders for now.
+// Add an `href` to make a card a link (e.g. to GitHub or a live demo).
+const moreProjects: { title: string; blurb: string; tags: string[]; href?: string }[] = [
+  { title: 'Project Seven', blurb: 'A short line about what it is and what you built.', tags: ['Python', 'Data'] },
+  { title: 'Project Eight', blurb: 'A short line about what it is and what you built.', tags: ['React', 'TypeScript'] },
+  { title: 'Project Nine', blurb: 'A short line about what it is and what you built.', tags: ['Java'] },
+  { title: 'Project Ten', blurb: 'A short line about what it is and what you built.', tags: ['SQL', 'Tableau'] },
+  { title: 'Project Eleven', blurb: 'A short line about what it is and what you built.', tags: ['Figma', 'UX'] },
+  { title: 'Project Twelve', blurb: 'A short line about what it is and what you built.', tags: ['C++'] },
+];
+
+// ---------- Scenery ----------
+// A storybook landscape in soft watercolor colors with thin navy outlines. Two drawings:
+//   1. landscape (1600 x 640): sky, big clouds, mountains, lake, and the sloping near bank.
+//      Its height follows the page width so it's never cut off at the top.
+//   2. meadow (1600 x 900): the grassy field under the content, covering whatever height it needs.
+// Grass and flowers are scattered with a seeded random generator: natural-looking, but identical every build.
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = seeded(11);
+const between = (min: number, max: number) => min + rand() * (max - min);
+const n = (v: number) => v.toFixed(1);
+type Pt = [number, number];
+
+// A puffy cloud outline: a chain of bumps (arcs) through the given points along its top edge
+function scallop(points: Pt[]) {
+  let d = `M${points[0][0]} ${points[0][1]}`;
+  for (let i = 1; i < points.length; i++) {
+    const [x0, y0] = points[i - 1];
+    const [x1, y1] = points[i];
+    const r = Math.hypot(x1 - x0, y1 - y0) * 0.6;
+    d += ` A${n(r)} ${n(r)} 0 0 1 ${x1} ${y1}`;
+  }
+  return d;
+}
+// A whole cloud: the bumpy top edge, then shallower bumps down the far side, along the bottom and back
+// up to the start, so it looks right from every side as it drifts.
+function cloudPath(top: Pt[], rest: Pt[]) {
+  let d = scallop(top);
+  let prev = top[top.length - 1];
+  for (const p of [...rest, top[0]]) {
+    const r = Math.hypot(p[0] - prev[0], p[1] - prev[1]) * 0.8;
+    d += ` A${n(r)} ${n(r)} 0 0 1 ${p[0]} ${p[1]}`;
+    prev = p;
+  }
+  return d + ' Z';
+}
+
+const cloudLeft: Pt[] = [
+  [-40, 430], [-10, 360], [30, 306], [84, 266], [146, 236], [206, 220], [262, 186], [330, 162],
+  [402, 168], [462, 196], [514, 236], [566, 262], [616, 290], [656, 330], [688, 384],
+];
+const cloudRight: Pt[] = [
+  [820, 410], [858, 356], [900, 314], [952, 282], [1010, 252], [1058, 214], [1100, 168], [1152, 126],
+  [1212, 92], [1282, 66], [1360, 50], [1442, 46], [1512, 66], [1572, 98], [1630, 140],
+];
+const cloudMiddle: Pt[] = [[540, 380], [600, 344], [668, 330], [740, 336], [806, 366]];
+// The rest of each cloud's outline: down the right side, along the bottom (right to left), up the left side
+const cloudShapes = [
+  cloudPath(cloudMiddle, [[832, 404], [812, 440], [740, 452], [660, 456], [580, 448], [526, 420]]),
+  cloudPath(cloudLeft, [[712, 424], [690, 462], [600, 476], [500, 482], [400, 484], [300, 482], [200, 478], [100, 472], [10, 466], [-62, 456]]),
+  cloudPath(cloudRight, [[1684, 196], [1708, 262], [1700, 334], [1672, 398], [1620, 440], [1520, 460], [1410, 470], [1300, 472], [1190, 470], [1080, 466], [970, 456], [870, 440]]),
+];
+// Bumpy shading lines inside the clouds, for depth
+const cloudShading = [
+  scallop([[40, 360], [92, 330], [150, 318], [212, 306]]),
+  scallop([[300, 250], [360, 230], [420, 236]]),
+  scallop([[930, 352], [990, 322], [1052, 304]]),
+  scallop([[1150, 220], [1214, 190], [1284, 176], [1350, 178]]),
+  scallop([[1420, 134], [1484, 128], [1546, 146]]),
+];
+
+// Storybook trees. Every canopy "lobe" is a ring of bumps (like the clouds) around an oval. A lighter
+// bumpy oval shifted up-left, mostly covered by a canopy-colored one shifted down-right, leaves a sunlit
+// crescent on the upper-left edge. Trees come in several shapes and greens so the rows don't look stamped.
+function bumpyOval(cx: number, cy: number, rx: number, ry: number, bumps: number) {
+  const pts: Pt[] = [];
+  for (let i = 0; i <= bumps; i++) {
+    const t = Math.PI / 2 + (i / bumps) * Math.PI * 2; // start at the bottom, go all the way round
+    pts.push([+n(cx + Math.cos(t) * rx), +n(cy + Math.sin(t) * ry)]);
+  }
+  return scallop(pts) + ' Z';
+}
+const greens = [
+  { c: '#8fb67b', h: '#a9ca91' },
+  { c: '#9cc287', h: '#b6d6a0' },
+  { c: '#7fa96e', h: '#9cc189' },
+  { c: '#a6c893', h: '#bfd9ab' },
+  { c: '#86ab7a', h: '#a3c595' },
+];
+type Kind = 'round' | 'oval' | 'slim' | 'twin';
+// Breeze: a gust sweeps left to right every 11 seconds (matching the light band over the meadow).
+// Each tree starts its bend when the gust reaches its x position.
+// (The light band's center crosses the screen between about 1s and 4.7s into each cycle.)
+const gustDelay = (x: number) => 1 + (Math.min(Math.max(x, 0), 1600) / 1600) * 3.7;
+
+function makeTree(kind: Kind, x: number, ground: number, size: number, trunk = true) {
+  // Each lobe: center offset and radii, as fractions of the tree's size
+  const shapes: Record<Kind, [number, number, number, number][]> = {
+    round: [[0, -0.6, 0.4, 0.42]],
+    oval: [[0, -0.68, 0.3, 0.5]],
+    slim: [[0, -0.62, 0.2, 0.56]],
+    twin: [[-0.2, -0.5, 0.3, 0.32], [0.14, -0.66, 0.36, 0.42]],
+  };
+  const lobes = shapes[kind].map(([dx, dy, rx, ry]) => {
+    const cx = x + dx * size;
+    const cy = ground + dy * size;
+    const RX = rx * size;
+    const RY = ry * size;
+    const bumps = Math.max(7, Math.round((RX + RY) / 5));
+    return {
+      canopy: bumpyOval(cx, cy, RX, RY, bumps),
+      light: bumpyOval(cx - RX * 0.08, cy - RY * 0.1, RX * 0.84, RY * 0.82, bumps),
+      cover: bumpyOval(cx + RX * 0.07, cy + RY * 0.09, RX * 0.8, RY * 0.76, bumps),
+    };
+  });
+  const top = Math.min(...shapes[kind].map(([, dy, , ry]) => dy + ry)); // lowest canopy edge (fraction)
+  const c = size * 0.06;
+  const curls = [[0.18, -0.5], [0.05, -0.32]]
+    .map(([dx, dy]) => `M${n(x + dx * size)} ${n(ground + dy * size)}q${n(c)} ${n(-c)} ${n(c * 2)} 0`)
+    .join('');
+  const color = greens[Math.floor(rand() * greens.length)];
+  return {
+    x,
+    lobes,
+    curls,
+    trunk: trunk
+      ? `M${n(x - size * 0.045)} ${n(ground)} L${n(x - size * 0.035)} ${n(ground + top * size - size * 0.05)} L${n(x + size * 0.035)} ${n(ground + top * size - size * 0.05)} L${n(x + size * 0.045)} ${n(ground)} Z`
+      : '',
+    style: `--c: ${color.c}; --h: ${color.h}; --delay: ${n(gustDelay(x))}s`,
+  };
+}
+const pickKind = (): Kind => {
+  const r = rand();
+  return r < 0.4 ? 'round' : r < 0.62 ? 'oval' : r < 0.8 ? 'twin' : 'slim';
+};
+// A row of trees with uneven spacing and the odd gap
+function treeRow(from: number, to: number, ground: number, sizeMin: number, sizeMax: number, back = false) {
+  const row = [];
+  for (let x = from; x < to; ) {
+    const size = between(sizeMin, sizeMax);
+    row.push({ ...makeTree(pickKind(), x, ground + between(-4, 4), size), back });
+    x += size * between(0.45, 0.8) + (rand() < 0.12 ? between(20, 50) : 0);
+  }
+  return row;
+}
+// A few small trees dotted up the hillsides, then the back and front rows along the far shore
+const hillTrees = [
+  ...Array.from({ length: 6 }, () => {
+    const x = between(10, 380);
+    return { ...makeTree(pickKind(), x, 336 + x * 0.27 + between(6, 26), between(22, 32)), back: true };
+  }),
+  ...Array.from({ length: 5 }, () => {
+    const x = between(1240, 1590);
+    return { ...makeTree(pickKind(), x, 392 - (x - 1240) * 0.07 + between(6, 26), between(22, 32)), back: true };
+  }),
+];
+const farTrees = [
+  ...hillTrees,
+  ...treeRow(-20, 470, 456, 38, 58, true),
+  ...treeRow(1140, 1620, 450, 38, 58, true),
+  ...treeRow(-10, 450, 472, 42, 68),
+  ...treeRow(1170, 1620, 468, 42, 70),
+];
+// Tall soft trees at each side of the lake. They stand behind the near bank, so the grass hides
+// their bases (no trunks showing).
+const nearTrees = [
+  makeTree('slim', 34, 568, 140, false), makeTree('twin', 104, 574, 100, false), makeTree('oval', 168, 578, 76, false),
+  makeTree('round', 1380, 646, 80, false), makeTree('slim', 1450, 644, 130, false),
+  makeTree('twin', 1520, 646, 120, false), makeTree('oval', 1580, 640, 150, false),
+];
+
+// Lake glints: [x, y, length, index]; more of them toward the middle, like light catching the water
+const shimmer = Array.from({ length: 110 }, (_, i) => {
+  const x = 800 + (rand() + rand() - 1) * 800;
+  return [x, between(488, 630), between(5, 30), i] as const;
+});
+// Soft lighter and darker streaks across the water, like watercolor
+const lakeStreaks = Array.from({ length: 12 }, (_, i) => ({
+  x: between(-100, 1500),
+  y: between(492, 625),
+  w: between(220, 520),
+  h: between(5, 12),
+  light: i % 3 !== 0,
+}));
+
+// The near bank slopes down from left to right. Its top edge is a filled silhouette of little rounded
+// grass tufts (a solid shape, not lines), so the grass meets the water with a soft, textured edge.
+const bankEdge = (x: number) => 522 + (x / 1600) * 92 - Math.sin((x / 1600) * Math.PI) * 14 + Math.sin(x / 120) * 4 + Math.sin(x / 31) * 1.5;
+let bankEdgeD = '';
+for (let x = -10; x < 1610; ) {
+  const w = between(5, 9);
+  const h = between(3, 8);
+  const lean = between(-1.5, 1.5);
+  const tip = x + w / 2 + lean;
+  bankEdgeD += ` Q${n(x + w * 0.3)} ${n(bankEdge(x) - h * 0.5)} ${n(tip)} ${n(bankEdge(tip) - h)}`;
+  bankEdgeD += ` Q${n(x + w * 0.7)} ${n(bankEdge(x + w) - h * 0.5)} ${n(x + w)} ${n(bankEdge(x + w))}`;
+  x += w;
+}
+const bankPath = `M-10 640 L-10 ${n(bankEdge(-10))}${bankEdgeD} L1610 640 Z`;
+// The same edge on its own, for the hand-drawn outline along the top of the grass
+const bankLine = `M-10 ${n(bankEdge(-10))}${bankEdgeD}`;
+
+// Meadow: things lower down (closer to the viewer) are drawn bigger
+const depth = (y: number) => 0.9 + (y / 900) * 1.3;
+
+// Wide, soft painted strokes of lighter and darker green, like watercolor washes
+const washes = Array.from({ length: 14 }, (_, i) => {
+  const y = between(20, 880);
+  const x = between(-200, 1400);
+  const w = between(300, 700);
+  const h = between(10, 26) * depth(y);
+  return {
+    d: `M${n(x)} ${n(y)} q${n(w / 2)} ${n(-h)} ${n(w)} ${n(between(-6, 6))} q${n(-w / 2)} ${n(h * 0.8)} ${n(-w)} 0 Z`,
+    light: i % 2 === 0,
+  };
+});
+
+// Little pebbles / white specks
+const pebbles = Array.from({ length: 90 }, () => {
+  const y = between(0, 900);
+  return { x: between(0, 1600), y, r: depth(y) * between(0.9, 1.8) };
+});
+
+// Wildflower patches: soft clusters of tiny dots in one color each
+const flowerColors = ['#f4b8c8', '#cdb9ea', '#f6e58f', '#ffffff', '#f4b8c8', '#ffffff'];
+const flowerPatches = Array.from({ length: 40 }, (_, i) => {
+  const cx = between(0, 1600);
+  const cy = between(30, 880);
+  const s = depth(cy);
+  const rx = between(30, 80) * s;
+  const ry = between(7, 16) * s;
+  const color = flowerColors[i % flowerColors.length];
+  const x = cx;
+  const dots = Array.from({ length: Math.round(between(18, 36)) }, () => {
+    const a = rand() * Math.PI * 2;
+    const d = Math.sqrt(rand());
+    return [cx + Math.cos(a) * rx * d, cy + Math.sin(a) * ry * d, between(1.8, 3.4) * s] as const;
+  });
+  return { x, color, dots };
+});
+
+// A handful of larger daisies that sway
+const daisies = Array.from({ length: 12 }, (_, i) => {
+  const y = between(260, 890);
+  return { x: between(0, 1600), y, s: depth(y) * 1.15, delay: -(i % 7) * 0.55 };
+});
+const daisyPetals = Array.from({ length: 8 }, (_, i) => i * 45);
+
+// Birds gliding across the sky: height (% of the landscape), size, crossing time, start offset (s)
+// Birds that hang around, wandering in slow loops: position (% of the landscape), size, loop time, offset
+// Wanderers stay high and well apart; the birds flying across use a lower band, so the two never cross.
+const wanderers = [
+  { top: 9, left: 24, size: 0.85, duration: 19, delay: -3 },
+  { top: 14, left: 50, size: 1, duration: 17, delay: -11 },
+  { top: 8, left: 74, size: 0.75, duration: 21, delay: -7 },
+];
+const birds = [
+  { top: 27, size: 0.9, duration: 50, delay: -12 },
+  { top: 33, size: 0.7, duration: 64, delay: -40 },
+];
+---
+
+<BaseLayout title="Works · Reewin Shi">
+  <h1>Works</h1>
+  <p class="intro">Pick a project to meet its villager.</p>
+
+  <section class="field" data-works aria-label="Projects">
+    <!-- ---------- Scenery (decorative) ---------- -->
+    <div class="backdrop" aria-hidden="true">
+      <!-- The landscape is a stack of layers sharing one coordinate space. Layers with the "paint" texture
+           never repaint (clouds only slide), which keeps the watercolor effect cheap. -->
+      <div class="landscape">
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#a9c9ea" />
+              <stop offset="0.7" stop-color="#cfe1f2" />
+            </linearGradient>
+            <linearGradient id="cloud" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fdfbf3" />
+              <stop offset="0.6" stop-color="#f6f5ee" />
+              <stop offset="1" stop-color="#dfe7ee" />
+            </linearGradient>
+            <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#9dbde3" />
+              <stop offset="0.25" stop-color="#b1cbea" />
+              <stop offset="1" stop-color="#a7c3e6" />
+            </linearGradient>
+            <filter id="blur-sm"><feGaussianBlur stdDeviation="4" /></filter>
+            <!-- Watercolor: wobble the edges, soften them, and add faint blotchy pigment inside -->
+            <filter id="paint" filterUnits="userSpaceOnUse" x="-1700" y="-60" width="3460" height="760" color-interpolation-filters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" stitchTiles="stitch" result="noise" />
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" result="wobbly" />
+              <feGaussianBlur in="wobbly" stdDeviation="0.7" result="soft" />
+              <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="9" stitchTiles="stitch" result="blots" />
+              <feColorMatrix in="blots" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.2 0.9" result="blotMask" />
+              <feFlood flood-color="#5a7d96" flood-opacity="0.08" />
+              <feComposite in2="blotMask" operator="in" />
+              <feComposite in2="soft" operator="in" result="pigment" />
+              <feMerge>
+                <feMergeNode in="soft" />
+                <feMergeNode in="pigment" />
+              </feMerge>
+            </filter>
+          </defs>
+          <rect width="1600" height="640" fill="url(#sky)" />
+        </svg>
+
+        <!-- Clouds: each its own layer so it can drift without repainting the texture -->
+        {[
+          { shape: cloudShapes[0], shading: [], d: 300 },
+          { shape: cloudShapes[1], shading: cloudShading.slice(0, 2), d: 220 },
+          { shape: cloudShapes[2], shading: cloudShading.slice(2), d: 260 },
+        ].map((c) => (
+          <svg class="layer cloud" style={`--d: ${c.d}s`} viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+            <g class="ink" filter="url(#paint)">
+              {[0, -1600].map((dx) => (
+                <g transform={`translate(${dx} 0)`}>
+                  <path fill="url(#cloud)" d={c.shape} />
+                  {c.shading.map((d) => <path class="shade" d={d} />)}
+                </g>
+              ))}
+            </g>
+          </svg>
+        ))}
+
+        <!-- Mountains, hills, shore and lake: painted once -->
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <g class="ink" filter="url(#paint)">
+            <path fill="#dcebd2" d="M220 474 C400 380 560 300 720 296 C860 292 1000 360 1180 452 L1180 474 Z" />
+            <path fill="#cfe5c4" d="M700 474 C850 412 980 352 1080 348 C1200 344 1340 400 1500 444 L1500 474 Z" />
+            <path fill="#a7cc8a" d="M-10 326 C150 318 300 360 450 400 C560 430 680 456 780 474 L-10 474 Z" />
+            <path fill="#c7e2a7" d="M840 474 C1000 444 1200 404 1380 384 C1480 372 1560 364 1610 356 L1610 474 Z" />
+            <path fill="#dcebb6" d="M-10 466 Q800 474 1610 462 L1610 478 Q800 486 -10 478 Z" />
+            <path fill="url(#lake)" d="M-10 478 Q800 486 1610 474 V640 H-10 Z" />
+          </g>
+          <rect x="0" y="480" width="1600" height="16" fill="#86a9d4" opacity="0.4" filter="url(#blur-sm)" />
+          <g filter="url(#blur-sm)">
+            {lakeStreaks.map((st) => (
+              <ellipse cx={n(st.x + st.w / 2)} cy={n(st.y)} rx={n(st.w / 2)} ry={n(st.h)} fill={st.light ? '#c9dcf0' : '#93b4dc'} opacity={st.light ? 0.7 : 0.35} />
+            ))}
+          </g>
+        </svg>
+
+        <!-- Trees on the far shore and hillsides; each bends as the gust passes -->
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <g class="trees">
+            {farTrees.map((t) => (
+              <g class={`breeze ${t.back ? 'far' : ''}`} style={t.style}>
+                {t.trunk && <path class="trunk" d={t.trunk} />}
+                {t.lobes.map((l) => (
+                  <>
+                    <path class="canopy" d={l.canopy} />
+                    <path class="highlight" d={l.light} />
+                    <path class="cover" d={l.cover} />
+                  </>
+                ))}
+                <path class="curls" d={t.curls} />
+              </g>
+            ))}
+          </g>
+        </svg>
+
+        <!-- Glints on the water -->
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <g class="shimmer">
+            {shimmer.map(([x, y, len, i]) => (
+              <line x1={n(x)} y1={n(y)} x2={n(x + len)} y2={n(y)} style={`--delay: ${-(i % 8) * 0.5}s`} />
+            ))}
+          </g>
+        </svg>
+
+        <!-- Tall trees at the water's edge, partly hidden behind the near bank -->
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <g class="trees near">
+            {nearTrees.map((t) => (
+              <g class="breeze" style={t.style}>
+                {t.lobes.map((l) => (
+                  <>
+                    <path class="canopy" d={l.canopy} />
+                    <path class="highlight" d={l.light} />
+                    <path class="cover" d={l.cover} />
+                  </>
+                ))}
+              </g>
+            ))}
+          </g>
+        </svg>
+
+        <!-- Near bank: a grassy slope with a soft, fuzzy tufted edge -->
+        <svg class="layer" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMax slice">
+          <g filter="url(#paint)">
+            <path d={bankPath} fill="#c9e2a6" />
+            <path class="bank-line" d={bankLine} />
+          </g>
+          <!-- Plain strip over the join with the meadow below, so the wobbly paint edge can't show the lake through.
+               It fades in from transparent, so there's no hard line where the painted bank meets the flat color. -->
+          <defs>
+            <linearGradient id="bank-fade" gradientUnits="userSpaceOnUse" x1="0" y1="570" x2="0" y2="634">
+              <stop offset="0" stop-color="#c9e2a6" stop-opacity="0" />
+              <stop offset="1" stop-color="#c9e2a6" />
+            </linearGradient>
+          </defs>
+          <rect x="-60" y="570" width="1720" height="136" fill="url(#bank-fade)" />
+        </svg>
+      </div>
+
+      {birds.map((b) => (
+        <svg class="bird" viewBox="0 0 24 10" style={`--top: ${b.top}; --s: ${b.size}; --d: ${b.duration}s; --delay: ${b.delay}s`}>
+          <path d="M1 8 Q6 1 12 7 Q18 1 23 8" />
+        </svg>
+      ))}
+      {wanderers.map((b) => (
+        <svg class="bird wander" viewBox="0 0 24 10" style={`--top: ${b.top}; --left: ${b.left}%; --s: ${b.size}; --d: ${b.duration}s; --delay: ${b.delay}s`}>
+          <path d="M1 8 Q6 1 12 7 Q18 1 23 8" />
+        </svg>
+      ))}
+
+      <svg class="meadow" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMin slice">
+        <defs>
+          <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#c9e2a6" />
+            <stop offset="0.5" stop-color="#bcd99a" />
+            <stop offset="1" stop-color="#aecf8c" />
+          </linearGradient>
+          <filter id="wash-blur" x="-20%" y="-200%" width="140%" height="500%">
+            <feGaussianBlur stdDeviation="12" />
+          </filter>
+        </defs>
+
+        <rect width="1600" height="900" fill="url(#grass)" />
+        <g filter="url(#wash-blur)">
+          {washes.map((w) => <path d={w.d} fill={w.light ? '#d7e9bd' : '#a7c987'} opacity={w.light ? 0.7 : 0.45} />)}
+        </g>
+
+
+        {pebbles.map((p) => <circle class="pebble" cx={n(p.x)} cy={n(p.y)} r={n(p.r)} />)}
+      </svg>
+
+      <!-- Flowers on their own layer, so their movement doesn't repaint the blurred grass underneath.
+           Each ruffles when the gust reaches its x position. -->
+      <svg class="meadow" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMin slice">
+        {flowerPatches.map((patch) => (
+          <g class="rustle" fill={patch.color} style={`--delay: ${n(gustDelay(patch.x))}s`}>
+            {patch.dots.map(([x, y, r]) => <circle cx={n(x)} cy={n(y)} r={n(r)} />)}
+          </g>
+        ))}
+
+
+        {daisies.map((f) => (
+          <g transform={`translate(${n(f.x)} ${n(f.y)}) scale(${n(f.s)})`}>
+            <g class="ruffle" style={`--delay: ${n(gustDelay(f.x))}s`}>
+              <path class="stem" d="M0 0 V16" />
+              {daisyPetals.map((angle) => (
+                <ellipse class="petal" cx="0" cy="-4.6" rx="2.4" ry="4" transform={`rotate(${angle})`} />
+              ))}
+              <circle r="2.5" fill="#f3c55c" />
+            </g>
+          </g>
+        ))}
+
+      </svg>
+
+      <!-- A soft gust of light rolling across the meadow every so often, like wind over grass -->
+      <div class="gust"></div>
+
+      <!-- Big foreground plants swaying in the bottom corners -->
+      <svg class="front left" viewBox="0 0 160 120">
+        <g class="ruffle" style="--delay: 1s">
+          <path class="stem" d="M40 120 Q36 80 44 52" />
+          <path class="leaf" d="M40 100 q-22 -4 -28 -22 q20 2 28 18 Z" />
+          <circle class="bloom" cx="44" cy="48" r="11" />
+          <path d="M38 47 q6 7 12 0" fill="none" stroke="#d98477" stroke-width="1.2" />
+        </g>
+        <g class="ruffle" style="--delay: 1.15s">
+          <path class="stem" d="M96 120 Q100 92 94 72" />
+          {daisyPetals.map((angle) => (
+            <ellipse class="petal" cx="94" cy="62" rx="3.6" ry="6.4" transform={`rotate(${angle} 94 68)`} />
+          ))}
+          <circle cx="94" cy="68" r="4" fill="#f3c55c" />
+        </g>
+      </svg>
+      <svg class="front right" viewBox="0 0 160 120">
+        <g class="ruffle" style="--delay: 4.5s">
+          <path class="stem" d="M60 120 Q66 84 58 56" />
+          {daisyPetals.map((angle) => (
+            <ellipse class="petal" cx="58" cy="46" rx="3.8" ry="6.8" transform={`rotate(${angle} 58 52)`} />
+          ))}
+          <circle cx="58" cy="52" r="4.2" fill="#f3c55c" />
+        </g>
+        <g class="ruffle" style="--delay: 4.65s">
+          <path class="stem" d="M118 120 Q114 96 122 74" />
+          <path class="leaf" d="M118 104 q20 -4 26 -20 q-18 2 -26 16 Z" />
+          <circle class="bloom" cx="122" cy="70" r="10" />
+          <path d="M116 69 q6 6 12 0" fill="none" stroke="#d98477" stroke-width="1.2" />
+        </g>
+      </svg>
+
+      <!-- Faint paper grain for the watercolor feel -->
+      <svg class="grain">
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" />
+          <feColorMatrix values="0 0 0 0 0.35  0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0.6 0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain)" />
+      </svg>
+    </div>
+
+    <!-- ---------- Content, lined up with the rest of the page ---------- -->
+    <div class="field-inner">
+      <div class="projects-col">
+      <!-- Project buttons. Once one is opened, they shrink into tabs along the left edge of the page. -->
+      <ul class="list">
+        {works.map((work, i) => (
+          <li>
+            <button
+              type="button"
+              class="work"
+              aria-pressed={i === 0 ? 'true' : 'false'}
+              aria-controls={`detail-${i}`}
+              data-index={i}
+              data-title={work.title}
+              data-sign={work.title.split(' – ')[0]}
+              data-villager={work.villager}
+              aria-label={work.title}
+              style={`--work: ${work.color}`}
+            >
+              <span
+                class:list={['swatch', { 'has-face': work.villager }]}
+                aria-hidden="true"
+                style={work.villager && `background-image: url(/villagers/${work.villager}-face.webp)`}
+              ></span>
+              <span class="short" aria-hidden="true">P{i + 1}</span>
+              <span class="text">
+                <span class="title">{work.title}</span>
+                <span class="tag">{work.tag}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <!-- Text box about the opened project (one per project; the script shows the right one) -->
+      {works.map((work, i) => (
+        <article class="detail" id={`detail-${i}`} data-detail={i} aria-labelledby={`detail-title-${i}`} style={`--work: ${work.color}`} hidden>
+          <button type="button" class="back" data-back>← All projects</button>
+          <h2 class="detail-title" id={`detail-title-${i}`} tabindex="-1">{work.title}</h2>
+          <p class="detail-summary">{work.summary}</p>
+          <ul class="chips">
+            {work.tags.map((t) => <li class="chip">{t}</li>)}
+          </ul>
+          {work.href ? (
+            <a class="detail-link" href={work.href}>View project →</a>
+          ) : (
+            <span class="detail-soon">Project page coming soon</span>
+          )}
+        </article>
+      ))}
+      </div>
+
+      <!-- The selected project's villager stands here, on a patch of ground ringed in the project's color -->
+      <div class="stage" id="stage" style={`--work: ${works[0].color}`}>
+        <svg class="spot" viewBox="0 0 200 60" aria-hidden="true">
+          <ellipse class="spot-glow" cx="100" cy="30" rx="97" ry="28" />
+          <ellipse cx="100" cy="30" rx="80" ry="21" fill="#cfe5b2" />
+          <ellipse cx="100" cy="31" rx="62" ry="15" fill="#e9dfba" />
+          <ellipse class="spot-ring" data-arrive cx="100" cy="30" rx="89" ry="25" />
+        </svg>
+
+        <!-- The villager stands on the spot. It's a button so tapping (or Enter) gives it some love. -->
+        <div class="character">
+          <button type="button" class="sprite" data-sprite hidden={!first} style={first && `background-image: url(${first.works.sheet})`}></button>
+        </div>
+
+        <!-- The villager's name in puffy cloud letters, under its spot -->
+        <span class="nameplate" data-stage-name data-arrive>{first?.name}</span>
+
+        <!-- Wooden signpost with the project number -->
+        <div class="sign" data-arrive>
+          <span class="board" data-stage-title aria-live="polite">{works[0].title.split(' – ')[0]}</span>
+          <span class="post" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="more" aria-labelledby="more-heading">
+    <h2 id="more-heading">More projects</h2>
+    <ul class="grid">
+      {moreProjects.map((p) => {
+        const Tag = p.href ? 'a' : 'div';
+        return (
+          <li>
+            <Tag class="card" href={p.href} target={p.href ? '_blank' : undefined} rel={p.href ? 'noopener' : undefined}>
+              <span class="card-title">{p.title}</span>
+              <span class="card-blurb">{p.blurb}</span>
+              <span class="card-tags">
+                {p.tags.map((t) => <span class="chip">{t}</span>)}
+              </span>
+            </Tag>
+          </li>
+        );
+      })}
+    </ul>
+  </section>
+</BaseLayout>
+
+<script>
+  import { villagers, type Step, type Villager } from '../data/villagers';
+
+  // ---------- Villager animation ----------
+  // A villager is one sprite sheet with all its frames side by side; showing frame i just means
+  // sliding the sheet over by i frames. Which frames make up each animation is in src/data/villagers.ts.
+  function animateVillager(sprite: HTMLElement) {
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    let v: Villager['works'] | null = null;
+    const show = (frame: number) => {
+      if (v) sprite.style.backgroundPositionX = `${(frame / (v.frames - 1)) * 100}%`;
+    };
+    let timer = 0;
+    let busy = false; // true while a hover or click animation is playing, so they don't interrupt each other
+
+    const play = (steps: Step[], done: () => void) => {
+      clearTimeout(timer);
+      let i = 0;
+      const next = () => {
+        if (i === steps.length) return done();
+        const [frame, ms] = steps[i++];
+        show(frame);
+        timer = window.setTimeout(next, ms);
+      };
+      next();
+    };
+    // Idle: rest, then every few seconds play the idle animation (Sammy smiles, Foxy blinks)
+    const idle = () => {
+      busy = false;
+      if (!v) return;
+      show(v.rest);
+      if (reduceMotion.matches) return;
+      timer = window.setTimeout(() => v && play(v.idle, idle), 2500 + Math.random() * 2500);
+    };
+    const react = (steps: Step[]) => {
+      if (busy || reduceMotion.matches) return;
+      busy = true;
+      play(steps, idle);
+    };
+
+    sprite.addEventListener('pointerenter', (e) => {
+      if (v && e.pointerType === 'mouse') react(v.hover); // touch screens get the click animation on tap instead
+    });
+    sprite.addEventListener('click', () => {
+      if (!v) return;
+      busy = false; // a click always plays, even mid-hover
+      react(v.click);
+    });
+
+    return {
+      // Switch to a different villager (or none)
+      set(key: string | undefined) {
+        clearTimeout(timer);
+        const villager = key ? villagers[key] : undefined;
+        const character = sprite.parentElement!;
+        const nameplate = character.parentElement!.querySelector<HTMLElement>('[data-stage-name]');
+        if (nameplate) nameplate.textContent = villager?.name ?? '';
+        sprite.hidden = !villager;
+        v = villager?.works ?? null;
+        if (!villager || !v) return;
+        sprite.style.backgroundImage = `url(${v.sheet})`;
+        sprite.setAttribute('aria-label', `Say hi to ${villager.name}`);
+        character.style.setProperty('--frames', String(v.frames));
+        character.style.setProperty('--fw', String(v.width));
+        character.style.setProperty('--fh', String(v.height));
+        idle();
+      },
+    };
+  }
+
+  // Clicking a project button selects it, recolors the character's spot, and updates the signpost.
+  for (const root of document.querySelectorAll<HTMLElement>('[data-works]')) {
+    const buttons = root.querySelectorAll<HTMLButtonElement>('.work');
+    const stage = root.querySelector<HTMLElement>('.stage')!;
+    const stageTitle = root.querySelector<HTMLElement>('[data-stage-title]')!;
+    const animated = root.querySelectorAll<Element>('[data-arrive]');
+    const details = root.querySelectorAll<HTMLElement>('[data-detail]');
+    const sprite = root.querySelector<HTMLButtonElement>('[data-sprite]')!;
+
+    // Opening a project turns the buttons into tabs on the left and shows its text box
+    const column = root.querySelector<HTMLElement>('.projects-col')!;
+    const open = (index: number) => {
+      // Keep the scene the same height as with the full list, so the villager stays on the grass
+      if (!root.classList.contains('is-open')) column.style.minHeight = `${column.offsetHeight}px`;
+      root.classList.add('is-open');
+      for (const d of details) d.hidden = d.dataset.detail !== String(index);
+      details[index].querySelector<HTMLElement>('.detail-title')?.focus({ preventScroll: true });
+    };
+    const close = () => {
+      root.classList.remove('is-open');
+      column.style.minHeight = '';
+      for (const d of details) d.hidden = true;
+      root.querySelector<HTMLElement>('.work[aria-pressed="true"]')?.focus({ preventScroll: true });
+    };
+    for (const back of root.querySelectorAll<HTMLButtonElement>('[data-back]')) back.addEventListener('click', close);
+    root.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.classList.contains('is-open')) close();
+    });
+    const villager = animateVillager(sprite);
+    villager.set(root.querySelector<HTMLElement>('.work[aria-pressed="true"]')?.dataset.villager);
+
+    for (const button of buttons) {
+      button.addEventListener('click', () => {
+        for (const b of buttons) b.setAttribute('aria-pressed', String(b === button));
+        stageTitle.textContent = button.dataset.sign ?? '';
+        // Swap in this project's villager (or leave the spot empty if it doesn't have one yet)
+        villager.set(button.dataset.villager);
+        open(Number(button.dataset.index));
+        stage.style.setProperty('--work', button.style.getPropertyValue('--work'));
+        // Replay the little "arrive" animations: remove the class, force a reflow, add it back
+        for (const el of animated) {
+          el.classList.remove('is-arriving');
+          void stage.offsetWidth;
+          el.classList.add('is-arriving');
+        }
+      });
+    }
+  }
+</script>
+
+<style>
+  h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 5vw, 3rem);
+  }
+  .intro {
+    margin: 0.25rem 0 1.5rem;
+    color: var(--muted);
+  }
+
+  /* ---------- Full-width scene ---------- */
+  .field {
+    /* Height of the sky/mountains/lake part. Matches the drawing's shape (640 / 1600 = 40% of the width)
+       so the clouds are never cut off; on narrow screens the 17rem minimum crops the sides instead. */
+    --land: max(17rem, 40vw);
+    position: relative;
+    isolation: isolate; /* keeps the backdrop's z-index:-1 inside this section */
+    /* Break out of the page's centered column to span the whole window */
+    width: 100vw;
+    margin-inline: calc(50% - 50vw);
+  }
+
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background: #b6d693;
+  }
+  /* Fade the page background into the top of the sky so there's no hard edge */
+  .backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2.5rem;
+    z-index: 1;
+    background: linear-gradient(var(--bg), transparent);
+  }
+  /* ...and fade the bottom of the meadow back into the page, above the "More projects" grid */
+  .backdrop::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0;
+    height: 3.5rem;
+    z-index: 1;
+    background: linear-gradient(transparent, var(--bg));
+  }
+
+  .landscape {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--land);
+  }
+  .layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  /* Thin navy ink outlines with little gaps, like a pen lifting off the paper */
+  .ink path {
+    stroke: #56739f;
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    stroke-dasharray: 140 7 46 5 210 9 80 4 120 8;
+  }
+  .ink .shade {
+    fill: none;
+    stroke: #a9bdd6;
+    stroke-width: 1.3;
+    stroke-dasharray: 36 9 20 7;
+  }
+  /* Storybook trees: each tree's greens come from --c (canopy) and --h (highlight).
+     The outline has small gaps like the clouds. */
+  .trees .canopy {
+    fill: var(--c);
+    stroke: #4f6b5c;
+    stroke-width: 1.3;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    stroke-dasharray: 34 3 18 4 52 2;
+  }
+  .trees .highlight {
+    fill: var(--h);
+    stroke: none;
+  }
+  /* Same color as the canopy, so only a crescent of the highlight shows */
+  .trees .cover {
+    fill: var(--c);
+    stroke: none;
+  }
+  .trees .curls {
+    fill: none;
+    stroke: #6b9160;
+    stroke-width: 1.2;
+    stroke-linecap: round;
+  }
+  .trees .trunk {
+    fill: #8b7361;
+    stroke: #4f6b5c;
+    stroke-width: 1.2;
+  }
+  /* Back-row trees are a little paler, as if further away */
+  .trees .far .canopy,
+  .trees .far .cover {
+    fill: color-mix(in srgb, var(--c) 72%, #e6f0dc);
+  }
+  .trees .far .highlight {
+    fill: color-mix(in srgb, var(--h) 72%, #eef5e6);
+  }
+  .trees .far .curls {
+    stroke: #86a979;
+  }
+  /* The big waterside trees are softer and more muted */
+  .trees.near .canopy,
+  .trees.near .cover {
+    fill: color-mix(in srgb, var(--c) 82%, #8a9f86);
+  }
+  .trees.near .canopy {
+    stroke: #5f7d68;
+    stroke-width: 1.1;
+  }
+  .trees.near .highlight {
+    fill: color-mix(in srgb, var(--h) 82%, #a3b39f);
+  }
+
+  /* Breeze: every 11 seconds a gust sweeps left to right. Each tree's --delay is set from its position,
+     so it bends right when the gust reaches it, springs back, then idles with a tiny sway. */
+  .breeze {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: breeze 11s ease-in-out var(--delay) infinite;
+  }
+  @keyframes breeze {
+    0% {
+      rotate: 0deg;
+    }
+    7% {
+      rotate: 3deg;
+    }
+    15% {
+      rotate: -1deg;
+    }
+    23% {
+      rotate: 0.8deg;
+    }
+    32% {
+      rotate: -0.3deg;
+    }
+    55% {
+      rotate: 0.4deg;
+    }
+    78% {
+      rotate: -0.3deg;
+    }
+    100% {
+      rotate: 0deg;
+    }
+  }
+
+  /* Clouds drift slowly to the right. Each layer holds its cloud plus a twin one scene-width to the left;
+     the layer slides exactly one width, so when it starts over the twin is where the original began. */
+  .cloud {
+    animation: drift-right var(--d) linear infinite;
+  }
+  @keyframes drift-right {
+    from {
+      translate: 0 0;
+    }
+    to {
+      translate: 100% 0;
+    }
+  }
+
+  /* Hand-drawn outline along the top edge of the near grass, with gaps like the other ink lines */
+  .bank-line {
+    fill: none;
+    stroke: #5f7d68;
+    stroke-width: 1.3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 90 6 34 4 140 8 60 5;
+  }
+
+  /* Light glinting on the lake */
+  .shimmer line {
+    stroke: #f7fafd;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    animation: glint 3.6s ease-in-out var(--delay) infinite;
+  }
+  @keyframes glint {
+    0%,
+    100% {
+      opacity: 0.2;
+      translate: 0 0;
+    }
+    50% {
+      opacity: 0.9;
+      translate: 6px 0;
+    }
+  }
+
+  .bird {
+    position: absolute;
+    top: calc(var(--land) * var(--top) / 100);
+    left: -3rem;
+    width: calc(1.4rem * var(--s));
+    fill: none;
+    stroke: #56739f;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    animation:
+      fly var(--d) linear var(--delay) infinite,
+      flap 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes fly {
+    to {
+      left: 100%;
+      translate: 0 -1.5rem;
+    }
+  }
+  @keyframes flap {
+    to {
+      scale: 1 0.55;
+    }
+  }
+  /* Birds that stay in view, looping around a spot */
+  .bird.wander {
+    left: var(--left);
+    animation:
+      wander var(--d) ease-in-out var(--delay) infinite alternate,
+      flap 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes wander {
+    0% {
+      translate: 0 0;
+    }
+    25% {
+      translate: 2.2rem -0.8rem;
+    }
+    50% {
+      translate: -1rem -1.4rem;
+    }
+    75% {
+      translate: 2.6rem 0.4rem;
+    }
+    100% {
+      translate: -1.8rem 0.3rem;
+    }
+  }
+
+  /* The meadow covers everything below the lake; "slice" crops the drawing instead of stretching it */
+  .meadow {
+    position: absolute;
+    top: calc(var(--land) - 1px);
+    left: 0;
+    width: 100%;
+    height: calc(100% - var(--land) + 1px);
+  }
+  /* Gust: a wide, very soft band of light that sweeps across the meadow and then waits */
+  .gust {
+    position: absolute;
+    top: calc(var(--land) * 0.62);
+    bottom: 0;
+    left: 0;
+    width: 60%;
+    background: linear-gradient(100deg, transparent, rgb(255 255 240 / 0.16) 45%, rgb(255 255 240 / 0.16) 55%, transparent);
+    mask-image: linear-gradient(transparent, #000 35%);
+    translate: -100% 0;
+    animation: gust 11s ease-in-out infinite;
+  }
+  @keyframes gust {
+    0% {
+      translate: -100% 0;
+    }
+    55%,
+    100% {
+      translate: 180% 0;
+    }
+  }
+  .pebble {
+    fill: #f1f3e8;
+    opacity: 0.85;
+  }
+
+  .stem {
+    fill: none;
+    stroke: #6f9e5c;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  .leaf {
+    fill: #9cc77e;
+    stroke: #5f8f62;
+    stroke-width: 0.8;
+  }
+  .petal {
+    fill: #fffdf7;
+    stroke: #8e9fb8;
+    stroke-width: 0.6;
+  }
+  .bloom {
+    fill: #f3a98f;
+    stroke: #b97866;
+    stroke-width: 1;
+  }
+
+  .front {
+    position: absolute;
+    bottom: 0;
+    width: clamp(6rem, 12vw, 10rem);
+  }
+  .front.left {
+    left: 0;
+  }
+  .front.right {
+    right: 0;
+  }
+
+  /* Flowers ruffle when the gust passes (same 11s cycle as the trees), with a little idle sway between */
+  .ruffle {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: ruffle 11s ease-in-out var(--delay) infinite;
+  }
+  @keyframes ruffle {
+    0% {
+      rotate: 0deg;
+    }
+    6% {
+      rotate: 10deg;
+    }
+    12% {
+      rotate: -5deg;
+    }
+    19% {
+      rotate: 4deg;
+    }
+    27% {
+      rotate: -1.5deg;
+    }
+    50% {
+      rotate: 2deg;
+    }
+    75% {
+      rotate: -1.5deg;
+    }
+    100% {
+      rotate: 0deg;
+    }
+  }
+  /* Flower clusters lean over (skew) as the gust passes, like grass bending */
+  .rustle {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: rustle 11s ease-in-out var(--delay) infinite;
+  }
+  @keyframes rustle {
+    0%,
+    40%,
+    100% {
+      transform: skewX(0deg);
+    }
+    7% {
+      transform: skewX(-14deg) translateX(3px);
+    }
+    15% {
+      transform: skewX(6deg);
+    }
+    24% {
+      transform: skewX(-2deg);
+    }
+  }
+
+  .grain {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.08;
+    mix-blend-mode: multiply;
+  }
+
+  /* Content sits in the page's normal centered column, starting just below the lake */
+  .field-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 2.5rem;
+    max-width: var(--max-width);
+    margin-inline: auto;
+    /* Start up at about the height of the mountaintops */
+    padding: calc(var(--land) * 0.45) var(--gutter) 3.5rem;
+  }
+  /* While a project is open, the tabs sit along the page's left edge; on narrower screens push the
+     content over so the text box doesn't end up underneath them */
+  .is-open .field-inner {
+    padding-left: max(var(--gutter), calc(9rem - max(0px, (100vw - var(--max-width)) / 2)));
+  }
+
+  /* ---------- Project buttons (left) ---------- */
+  .list {
+    display: grid;
+    gap: 0.85rem;
+    align-content: start;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .work {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid transparent;
+    border-radius: 0.5rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: translate 0.15s ease, border-color 0.15s ease;
+  }
+  .work:hover {
+    translate: 4px 0;
+  }
+  .work[aria-pressed='true'] {
+    border-color: var(--accent);
+    translate: 4px 0;
+  }
+
+  .swatch {
+    flex: none;
+    width: 3.25rem;
+    aspect-ratio: 1;
+    border-radius: 0.25rem;
+    background-color: var(--work);
+    background-image: radial-gradient(rgb(255 255 255 / 0.45) 1.5px, transparent 1.5px);
+    background-size: 10px 10px;
+  }
+  /* Projects with a villager show its face on the project's color (made by characters/tools/faces.py) */
+  .swatch.has-face {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+  }
+  .text {
+    display: grid;
+  }
+  .title {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+  .tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--moss);
+  }
+
+  /* Left column: the project buttons, or the open project's text box */
+  .projects-col {
+    min-width: 0; /* don't let the row of tabs on phones stretch the page wider than the screen */
+  }
+  /* The text box takes over exactly the space the six buttons used: same width, and stretching down
+     to where the last button ended (the script keeps the column at the list's height) */
+  .is-open .projects-col {
+    display: flex;
+    flex-direction: column;
+  }
+  .is-open .detail {
+    flex: 1;
+  }
+
+  /* ---------- Open project: buttons become tabs on the far left ---------- */
+  .is-open .list {
+    position: absolute;
+    top: calc(var(--land) * 0.45);
+    left: 0;
+    z-index: 2;
+    animation: tabs-in 0.35s ease-out;
+  }
+  /* Each tab is as tall as a big button (same swatch and padding), so the six tabs run the same
+     length as the text box; they're just narrow, labeled P1-P6 */
+  .is-open .work {
+    gap: 0.7rem;
+    padding: 0.75rem 1rem 0.75rem 1.25rem;
+    border-width: 2px 2px 2px 0;
+    border-radius: 0 0.6rem 0.6rem 0;
+    white-space: nowrap;
+    /* tucked slightly off the edge; the open project's tab pokes out */
+    translate: -0.5rem 0;
+  }
+  .is-open .work:hover,
+  .is-open .work[aria-pressed='true'] {
+    translate: 0 0;
+  }
+  /* Tabs just say P1, P2, ... */
+  .short {
+    display: none;
+  }
+  .is-open .short {
+    display: block;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+  .is-open .text {
+    display: none;
+  }
+  @keyframes tabs-in {
+    from {
+      opacity: 0;
+      translate: -2rem 0;
+    }
+  }
+
+  /* The project's text box */
+  .detail {
+    padding: 1.25rem 1.5rem 1.5rem;
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    border-top: 6px solid var(--work, var(--moss));
+    animation: pop-in 0.3s ease-out;
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+  .back {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--moss);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .back:hover {
+    color: var(--text);
+  }
+  .detail-title {
+    margin: 0.5rem 0 0.5rem;
+    font-size: 1.6rem;
+  }
+  .detail-title:focus {
+    outline: none;
+  }
+  .detail-summary {
+    margin: 0 0 1rem;
+    color: var(--muted);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+  .detail-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--surface);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .detail-link:hover {
+    background: var(--accent-ink);
+  }
+  .detail-soon {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- Character spot (right) ---------- */
+
+  /* Registering --work as a color lets the browser animate it, so the spot's ring fades between project colors */
+  @property --work {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #e9b49a;
+  }
+
+  .stage {
+    position: relative;
+    min-height: 22rem;
+    transition: --work 0.5s ease;
+  }
+
+  /* Spot, villager and sign sit a little up from the bottom, leaving room for the name underneath */
+  .stage {
+    --ground: calc(6% + 2.6rem);
+  }
+  .spot {
+    position: absolute;
+    left: 50%;
+    bottom: var(--ground);
+    width: min(75%, 20rem);
+    translate: -50% 0;
+    overflow: visible;
+  }
+  .spot-glow {
+    fill: var(--work);
+    opacity: 0.45;
+  }
+  .spot-ring {
+    fill: none;
+    stroke: var(--work);
+    stroke-width: 3;
+    stroke-dasharray: 7 6;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .spot-ring.is-arriving {
+    animation: pulse 0.6s ease-out;
+  }
+  @keyframes pulse {
+    from {
+      scale: 0.7;
+      opacity: 0;
+    }
+  }
+
+  /* Where the villager stands: centered on the spot, feet on the patch */
+  .character {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--ground) + 2.4rem);
+    /* Sized to one frame of the villager's sprite sheet (set by the script), feet at the bottom edge.
+       Scaled by frame width so every villager is drawn at the same scale. */
+    width: calc(min(60%, 15rem) * var(--fw, 440) / 440);
+    aspect-ratio: var(--fw, 440) / var(--fh, 498);
+    translate: -50% 0;
+  }
+  .sprite {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    /* All frames side by side; the script slides between them */
+    background: no-repeat 0 0 / calc(var(--frames, 9) * 100%) 100%;
+    cursor: pointer;
+    filter: drop-shadow(0 6px 4px rgb(60 80 40 / 0.18));
+  }
+  .sprite:focus-visible {
+    border-radius: 1rem;
+  }
+
+  /* Soft rounded white letters with a dark outline so they read on the grass */
+  .nameplate {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--ground) - 2.9rem);
+    translate: -50% 0;
+    font-family: 'Sniglet', var(--font-body);
+    font-weight: 800;
+    font-size: 1.8rem;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    color: #fff;
+    -webkit-text-stroke: 6px #2e2622;
+    paint-order: stroke fill;
+    text-shadow: 0 2px 5px rgb(40 70 30 / 0.2);
+    pointer-events: none;
+  }
+  .nameplate.is-arriving {
+    animation: puff 0.5s ease-out;
+  }
+  @keyframes puff {
+    from {
+      scale: 0.6;
+      opacity: 0;
+    }
+    60% {
+      scale: 1.08;
+    }
+  }
+
+  .sign {
+    position: absolute;
+    right: 0;
+    bottom: calc(var(--ground) + 8%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 30%;
+    transform-origin: 50% 100%;
+  }
+  .sign.is-arriving {
+    animation: wobble 0.6s ease-out;
+  }
+  @keyframes wobble {
+    25% {
+      rotate: -6deg;
+    }
+    60% {
+      rotate: 4deg;
+    }
+  }
+  .board {
+    padding: 0.35rem 0.6rem;
+    border: 2px solid #8a5a32;
+    border-radius: 0.25rem;
+    background: #c48d58;
+    box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.15);
+    color: #fff7e8;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .post {
+    width: 6px;
+    height: 2.25rem;
+    background: #8a5a32;
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* ---------- More projects grid ---------- */
+  .more {
+    margin-top: 2.5rem;
+  }
+  .more h2 {
+    margin: 0 0 1.25rem;
+    font-size: 1.6rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .grid li {
+    display: flex;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 1rem 1.1rem 1.1rem;
+    border-radius: 0.5rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    text-decoration: none;
+    transition: translate 0.15s ease;
+  }
+  a.card:hover,
+  a.card:focus-visible {
+    translate: 0 -3px;
+  }
+  .card-title {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+  .card-blurb {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+  .chip {
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--moss) 14%, transparent);
+    color: var(--moss);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cloud,
+    .breeze,
+    .ruffle,
+    .rustle,
+    .bird.wander,
+    .gust,
+    .shimmer line,
+    .bird,
+    .spot-ring.is-arriving,
+    .sign.is-arriving,
+    .nameplate.is-arriving,
+    .is-open .list,
+    .detail {
+      animation: none;
+    }
+    .bird {
+      display: none;
+    }
+  }
+
+  /* On small screens, show the character spot first and the list underneath */
+  @media (max-width: 48rem) {
+    .field-inner {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      padding-top: calc(var(--land) - 2rem);
+    }
+    .stage {
+      order: -1;
+      min-height: 13rem;
+    }
+    .character {
+      width: calc(min(46%, 12rem) * var(--fw, 440) / 440);
+    }
+    /* No room for side tabs on a phone: they become a scrollable row above the text box */
+    .is-open .field-inner {
+      padding-left: var(--gutter);
+    }
+    .is-open .list {
+      position: static;
+      display: flex;
+      max-width: none;
+      overflow-x: auto;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.25rem;
+    }
+    .is-open .work,
+    .is-open .work:hover,
+    .is-open .work[aria-pressed='true'] {
+      border-width: 2px;
+      border-radius: 0.5rem;
+      translate: 0 0;
+      padding: 0.4rem 0.7rem;
+    }
+  }
+</style>

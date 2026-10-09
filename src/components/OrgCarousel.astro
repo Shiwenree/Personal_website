@@ -1,0 +1,457 @@
+---
+// Auto-scrolling strip of org cards, with arrows on each side that slide it over by one card per click.
+// How the loop works: the cards are rendered twice in one long row, and the row slides left by
+// exactly one copy's width, so the second copy lands where the first started and the restart is invisible.
+// The script tag at the bottom drives the movement; if it doesn't run, a CSS animation scrolls the row instead.
+
+import type { ImageMetadata } from 'astro';
+import { Image } from 'astro:assets';
+import rxnPhoto from '../assets/orgs/rxn.jpg';
+import revolutionPhoto from '../assets/orgs/revolution.jpg';
+import pgnPhoto from '../assets/orgs/pgn.jpg';
+import atlasPhoto from '../assets/orgs/atlas.jpg';
+
+// Campus orgs. `role` is my position, `about` says what the org is.
+// `mark` is the big text on the colored tile (swap for a logo image later).
+// Add an `href` to make a card a link, e.g. href: 'https://...'.
+// Add a `photo` (imported from src/assets/orgs) to show a picture instead of the colored tile.
+const orgs: { name: string; role: string; about: string; mark: string; color: string; href?: string; photo?: ImageMetadata }[] = [
+  { name: 'Atlas Digital Consulting', role: 'Software Analyst · Professional Big', about: 'Student tech consulting club', mark: 'AD', color: '#a9c4d6', photo: atlasPhoto, href: 'https://www.atlasdigital.org/' },
+  { name: '180 Degrees Consulting', role: 'Project Manager', about: 'Pro-bono consulting for nonprofits', mark: '180', color: '#9fc3b8', href: 'https://www.180dcmichigan.com/' },
+  { name: 'Phi Gamma Nu', role: 'Professional Big', about: 'Professional business fraternity', mark: 'ΦΓΝ', color: '#b9c99a', photo: pgnPhoto, href: 'https://pgnumich.com/' },
+  { name: 'rXn', role: 'Choreographer', about: 'Chinese fusion performance group', mark: 'rXn', color: '#d4b3d1', photo: rxnPhoto },
+  { name: 'Revolution', role: 'Performer', about: 'Chinese yoyo performance group', mark: 'REV', color: '#c9b49a', photo: revolutionPhoto, href: 'https://revolutionyoyo.com/' },
+];
+
+// One "copy" of the row needs enough cards to be wider than the screen, or a gap shows during the loop.
+// With only a few orgs, repeat the list until there are at least 6 cards per copy.
+const repeats = Math.ceil(6 / orgs.length);
+const copy = Array.from({ length: repeats }, () => orgs).flat();
+const cards = [...copy, ...copy];
+
+// A fixed "random-looking" tilt per card, like the polaroid on the About page. Fixed (not Math.random)
+// so both copies of the row match exactly and the loop seam stays invisible.
+const tilts = [-2.5, 1.5, -1, 2.5, -2, 1];
+---
+
+<section class="orgs" aria-labelledby="orgs-heading">
+  <h2 id="orgs-heading">Where you'll find me on campus</h2>
+
+  <div class="carousel" data-carousel>
+    <!-- Sammy runs along the tops of the cards, following each card's tilt and hopping the gaps.
+         He runs while the row moves, stops when it pauses, and turns around if the row goes backward. -->
+    <div class="runner" data-runner aria-hidden="true">
+      <span class="runner-sprite"></span>
+    </div>
+
+    <div class="side prev">
+      <button class="arrow" type="button" data-dir="-1" aria-label="Scroll orgs backward">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+    </div>
+
+    <div class="viewport">
+      <ul class="track">
+        {cards.map((org, i) => {
+          // Only the first time each org appears is "real"; repeats exist just for the visual loop,
+          // so hide them from screen readers and keyboard tabbing.
+          const repeat = i >= orgs.length;
+          const Tag = org.href ? 'a' : 'div';
+          return (
+            <li aria-hidden={repeat ? 'true' : undefined}>
+              <Tag
+                class="card"
+                href={org.href}
+                target={org.href ? '_blank' : undefined}
+                rel={org.href ? 'noopener' : undefined}
+                tabindex={org.href && repeat ? -1 : undefined}
+                style={`--card: ${org.color}; --tilt: ${tilts[i % copy.length % tilts.length]}deg`}
+              >
+                {org.photo ? (
+                  <Image class="art photo" src={org.photo} alt={`${org.name} group photo`} width={480} widths={[240, 480]} sizes="14rem" />
+                ) : (
+                  <span class="art" aria-hidden="true">{org.mark}</span>
+                )}
+                <span class="title">{org.name}</span>
+                <span class="tag">{org.role}</span>
+                <span class="about">{org.about}</span>
+              </Tag>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+
+    <div class="side next">
+      <button class="arrow" type="button" data-dir="1" aria-label="Scroll orgs forward">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { villagers } from '../data/villagers';
+
+  // Moves the row every frame, so a click on an arrow can slide it over by one card mid-loop.
+  const LOOP_SECONDS = 40; // time for one full loop at normal speed
+
+  for (const carousel of document.querySelectorAll<HTMLElement>('[data-carousel]')) {
+    const viewport = carousel.querySelector<HTMLElement>('.viewport')!;
+    const track = carousel.querySelector<HTMLElement>('.track')!;
+    const items = track.children as HTMLCollectionOf<HTMLElement>;
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    carousel.classList.add('is-js'); // turns off the CSS fallback animation and shows the arrows
+
+    // loopWidth = width of one copy of the cards (where the second copy starts).
+    // step = one card plus the gap after it, i.e. how far an arrow click moves the row.
+    let loopWidth = 0;
+    let step = 0;
+    const measure = () => {
+      loopWidth = items[items.length / 2].offsetLeft - items[0].offsetLeft;
+      step = items[1].offsetLeft - items[0].offsetLeft;
+    };
+    measure();
+    new ResizeObserver(measure).observe(track);
+
+    let offset = 0; // how far the row has moved left, in px
+    let shift = 0; // distance still left to slide from arrow clicks (+ forward, - backward)
+    let speed = 1; // auto-scroll speed; eases to 0 while paused so it doesn't stop abruptly
+    let paused = false; // pointer or keyboard focus is on the gallery
+
+    // ---------- Sammy ----------
+    const runner = carousel.querySelector<HTMLElement>('[data-runner]')!;
+    const runSprite = runner.querySelector<HTMLElement>('.runner-sprite')!;
+    const walk = villagers.sammy.village;
+    runSprite.style.backgroundImage = `url(${walk.sheet})`;
+    const RUN_AT = 0.62; // how far across the gallery he runs (right of the heading)
+    const HOP_REACH = 20; // px either side of a gap where the hop happens
+    const HOP_HEIGHT = 22; // px
+    const SINK = 6; // px his feet sink into the card edge, so he looks planted rather than floating
+    let facing = walk.right;
+    let stride = 0; // how far through the run cycle he is
+    const showFrame = (f: number) => {
+      runSprite.style.backgroundPositionX = `${(f / (walk.frames - 1)) * 100}%`;
+    };
+
+    // The top edge of every card at the moment: each card is rotated by its tilt around its center,
+    // so its top edge is a slanted line. Returns the edges sorted left to right, in carousel coordinates.
+    const cardTops = () => {
+      const box = carousel.getBoundingClientRect();
+      return [...items].map((li) => {
+        const r = li.getBoundingClientRect(); // the li isn't rotated, so this is the card's un-tilted box
+        const card = li.firstElementChild as HTMLElement;
+        const angle = (parseFloat(card.style.getPropertyValue('--tilt')) * Math.PI) / 180;
+        const cx = r.left - box.left + r.width / 2, cy = r.top - box.top + r.height / 2;
+        const hw = r.width / 2, hh = r.height / 2;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        // corners of the top edge after rotating
+        const left = { x: cx - hw * cos + hh * sin, y: cy - hw * sin - hh * cos };
+        const right = { x: cx + hw * cos + hh * sin, y: cy + hw * sin - hh * cos };
+        return { left, right, angle };
+      });
+    };
+
+    // Where Sammy's feet go: on the card under him (following its slant), or hopping across a gap
+    const placeRunner = () => {
+      const x = carousel.clientWidth * RUN_AT;
+      const tops = cardTops();
+      let y = 0, angle = 0, lift = 0;
+      const on = tops.find((t) => x >= t.left.x && x <= t.right.x);
+      if (on) {
+        const t = (x - on.left.x) / (on.right.x - on.left.x);
+        y = on.left.y + t * (on.right.y - on.left.y);
+        angle = on.angle;
+      }
+      // Hop: near a gap, rise in an arc from the end of one card to the start of the next
+      for (let i = 0; i < tops.length - 1; i++) {
+        const a = tops[i].right, b = tops[i + 1].left;
+        const start = a.x - HOP_REACH, end = b.x + HOP_REACH;
+        if (x < start || x > end) continue;
+        const t = (x - start) / (end - start);
+        const ground = a.y + (b.y - a.y) * t;
+        if (!on) y = ground;
+        lift = Math.sin(t * Math.PI) * HOP_HEIGHT;
+        angle = on ? angle * (1 - Math.sin(t * Math.PI)) : 0; // level out mid-air
+        break;
+      }
+      runner.style.left = `${x}px`;
+      runner.style.top = `${y + SINK - lift}px`;
+      runner.style.rotate = `${angle}rad`;
+      return lift > 0.5;
+    };
+
+    let last = performance.now();
+    const frame = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.1); // seconds since last frame (capped after tab switches)
+      last = now;
+      const before = offset;
+      speed += ((paused ? 0 : 1) - speed) * Math.min(dt * 8, 1);
+
+      if (reduceMotion.matches) {
+        track.style.translate = '';
+      } else if (loopWidth > 0) {
+        // Slide a fraction of the remaining click distance each frame: fast at first, then easing in
+        const slide = Math.abs(shift) < 0.5 ? shift : shift * Math.min(dt * 10, 1);
+        shift -= slide;
+        // Wrap around in both directions so the loop never runs out
+        const moved = offset + speed * (loopWidth / LOOP_SECONDS) * dt + slide;
+        offset = ((moved % loopWidth) + loopWidth) % loopWidth;
+        track.style.translate = `${-offset}px 0`;
+      }
+
+      // How fast the cards moved this frame (px/s; positive = row sliding left, so Sammy runs right).
+      // The wrap-around jump from the end of the loop back to the start isn't real movement, so undo it.
+      let moved = offset - before;
+      if (moved > loopWidth / 2) moved -= loopWidth;
+      if (moved < -loopWidth / 2) moved += loopWidth;
+      const velocity = dt > 0 ? moved / dt : 0;
+      const airborne = placeRunner();
+      if (Math.abs(velocity) < 4 || reduceMotion.matches) {
+        stride = 0;
+        showFrame(walk.rest); // the row has stopped, so he stops and faces you
+      } else {
+        facing = velocity > 0 ? walk.right : walk.left;
+        // Legs keep up with the floor (faster cards, faster steps); mid-hop he holds a stride
+        if (!airborne) stride += (Math.abs(velocity) * dt) / 22;
+        showFrame(facing[airborne ? 0 : Math.floor(stride) % facing.length]);
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+
+    // Pause while someone is pointing at the gallery (cards or arrows) or tabbing through it
+    carousel.addEventListener('pointerenter', () => (paused = true));
+    carousel.addEventListener('pointerleave', () => (paused = false));
+    carousel.addEventListener('focusin', () => (paused = true));
+    carousel.addEventListener('focusout', () => (paused = false));
+
+    for (const arrow of carousel.querySelectorAll<HTMLButtonElement>('.arrow')) {
+      const dir = Number(arrow.dataset.dir); // -1 = back, 1 = forward
+      arrow.addEventListener('click', () => {
+        if (reduceMotion.matches) {
+          // No auto-scroll in this mode; the row is a normal scrollable strip, so just scroll it
+          viewport.scrollBy({ left: dir * step });
+        } else {
+          shift += dir * step; // clicking several times quickly adds up
+        }
+      });
+    }
+  }
+</script>
+
+<style>
+  .orgs {
+    margin-top: 4rem;
+  }
+  /* room above the cards for Sammy */
+  .orgs h2 {
+    margin-bottom: 4.5rem !important;
+  }
+  h2 {
+    margin: 0 0 1.25rem;
+    font-size: 1.6rem;
+  }
+
+  .carousel {
+    position: relative;
+  }
+
+  /* Sammy: his feet are at the element's top-left point (set by the script), the sprite hangs above */
+  .runner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    width: 6.5rem;
+    aspect-ratio: 450 / 379;
+    translate: -50% -100%;
+    transform-origin: 50% 100%;
+    pointer-events: none;
+  }
+  .runner-sprite {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin-top: 1.5%;
+    background: no-repeat 0 0 / 900% 100%;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .runner {
+      display: none;
+    }
+  }
+
+  /* Invisible hover zones on each edge; the arrow inside fades in when you hover the zone */
+  .side {
+    position: absolute;
+    inset-block: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    width: 5rem;
+  }
+  .side.prev {
+    left: 0;
+  }
+  .side.next {
+    right: 0;
+    justify-content: flex-end;
+  }
+  .carousel:not(.is-js) .side {
+    display: none;
+  }
+
+  .arrow {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 2px solid var(--accent);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--accent-ink);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    opacity: 0;
+    scale: 0.85;
+    transition: opacity 0.2s ease, scale 0.2s ease, background 0.15s ease, color 0.15s ease;
+  }
+  .side:hover .arrow,
+  .arrow:focus-visible {
+    opacity: 1;
+    scale: 1;
+  }
+  .arrow:hover {
+    background: var(--accent);
+    color: var(--surface);
+  }
+  .arrow:active {
+    scale: 0.92;
+  }
+  .arrow svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* Touch screens can't hover, so keep the arrows visible there */
+  @media (hover: none) {
+    .arrow {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  /* Clip the moving row and fade it out at both edges */
+  .viewport {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+    padding-block: 1.5rem;
+  }
+
+  .track {
+    display: flex;
+    gap: 1.25rem;
+    width: max-content;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* Fallback if the script doesn't run: plain CSS loop that pauses on hover */
+  .carousel:not(.is-js) .track {
+    animation: scroll 40s linear infinite;
+  }
+  .carousel:not(.is-js) .viewport:hover .track,
+  .carousel:not(.is-js) .viewport:focus-within .track {
+    animation-play-state: paused;
+  }
+
+  @keyframes scroll {
+    /* -50% = one full copy, minus half the gap so the seam lines up exactly */
+    to {
+      translate: calc(-50% - 0.625rem) 0;
+    }
+  }
+
+  .card {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    width: 14rem;
+    padding: 0.75rem 0.75rem 1rem;
+    background: var(--surface);
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+    color: var(--text);
+    text-decoration: none;
+    rotate: var(--tilt);
+    transition: translate 0.15s ease, rotate 0.15s ease;
+  }
+  /* Straighten up and lift a little on hover */
+  .card:hover,
+  .card:focus-visible {
+    translate: 0 -4px;
+    rotate: 0deg;
+  }
+
+  /* Placeholder artwork: a colored tile with a dotted pattern and the org's initials, until real logos exist */
+  .art {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: rgb(255 255 255 / 0.9);
+    border-radius: 0.25rem;
+    background-color: var(--card);
+    background-image: radial-gradient(rgb(255 255 255 / 0.45) 1.5px, transparent 1.5px);
+    background-size: 14px 14px;
+  }
+  /* Real photos fill the same 4:3 frame, cropped to fit */
+  .photo {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+  }
+  .title {
+    margin-top: 0.75rem;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+  .tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--moss);
+  }
+  .about {
+    margin-top: 0.15rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  /* People who turn on "reduce motion" get a still row they can scroll by hand */
+  @media (prefers-reduced-motion: reduce) {
+    .viewport {
+      overflow-x: auto;
+      mask-image: none;
+    }
+    .track {
+      animation: none;
+    }
+    li[aria-hidden='true'] {
+      display: none;
+    }
+  }
+</style>

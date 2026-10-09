@@ -1,0 +1,76 @@
+/* Site-wide base styles. Per-project animal themes will override these variables later. */
+@import '@fontsource-variable/fraunces/soft.css';
+
+:root {
+  /* Palette: cream paper, warm ink, forest green + moss accents */
+  --bg: #fbf6ee;
+  --surface: #fffdf8;
+  --text: #2e2622;
+  --muted: #76695f;
+  --line: #eaddcc;
+  --accent: #4f7a4a;
+  --accent-ink: #3d5f39;
+  --moss: #6d8a4e;
+
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --radius: 1.25rem;
+  --shadow: 0 1px 2px rgb(46 38 34 / 0.06), 0 8px 24px -12px rgb(46 38 34 / 0.18);
+  --gutter: 1.25rem;
+  --max-width: 64rem;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Column layout so the footer sits at the bottom even on short pages */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+  /* Full-width sections (like the Works meadow) use 100vw, which can be a scrollbar wider than the page */
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--accent-ink);
+  text-underline-offset: 0.2em;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 2.5rem var(--gutter) 4rem;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
