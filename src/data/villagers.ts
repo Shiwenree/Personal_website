@@ -30,6 +30,7 @@ export interface Villager {
     restRight?: number; // for villagers whose resting pose faces sideways: the pose after walking right
     idle: Step[]; // sometimes played while resting
     speed?: number; // walking speed in px per second (default 70)
+    waddle?: number; // degrees to rock side to side with each step, leaning into the walk (default none)
     stepMs?: number; // time per walk frame (default 170)
   };
 }
@@ -37,12 +38,12 @@ export interface Villager {
 export const villagers: Record<string, Villager> = {
   sammy: {
     name: 'Sammy',
-    // Frames: 0-2 smile (closed, half, open), 3-5 wave (paw by cheek, up, out), 6 wink (unused), 7-8 hearts (low, high)
+    // Frames: 0-2 smile (small, bigger, biggest), 3-5 wave (paw by cheek, up, out), 6 wink (unused), 7-8 hearts (low, high)
     works: {
       sheet: '/villagers/sammy.webp',
       frames: 9,
-      width: 440,
-      height: 498,
+      width: 432,
+      height: 502,
       rest: 0,
       idle: [[1, 110], [2, 900], [1, 110], [0, 110]],
       // Wave hello twice, then settle back down
@@ -57,8 +58,8 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/sammy-walk.webp',
       frames: 9,
-      width: 450,
-      height: 379,
+      width: 456,
+      height: 386,
       left: [0, 1, 2, 1],
       right: [3, 4, 5, 4],
       rest: 6,
@@ -73,7 +74,7 @@ export const villagers: Record<string, Villager> = {
       sheet: '/villagers/foxy.webp',
       frames: 6,
       width: 456,
-      height: 436,
+      height: 435,
       rest: 0,
       // Sleepy slow blink
       idle: [[1, 160], [2, 1100], [1, 160], [0, 160]],
@@ -85,7 +86,7 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/foxy-walk.webp',
       frames: 9,
-      width: 386,
+      width: 398,
       height: 440,
       left: [0, 1, 2, 1],
       right: [3, 4, 5, 4],
@@ -96,17 +97,17 @@ export const villagers: Record<string, Villager> = {
 
   duck: {
     name: 'Rubber Debuggy',
-    // Frames: 0 stationary, 1-2 sprout sways one way then the other, 3-5 flower blooms (click), 6-8 flapping (hover)
+    // Frames: 0 stationary, 1-2 sprout sways one way then the other, 3-5 flower blooms (click), 6-7 flapping (hover)
     works: {
       sheet: '/villagers/duck.webp',
-      frames: 9,
-      width: 330,
-      height: 507,
+      frames: 8,
+      width: 338,
+      height: 509,
       rest: 0,
       // The sprout on its head sways back and forth twice, passing through upright (stationary) in between
       idle: [[1, 450], [0, 220], [2, 450], [0, 220], [1, 450], [0, 220], [2, 450], [0, 220]],
-      // Flap flap
-      hover: [[6, 120], [7, 120], [8, 140], [7, 120], [6, 120], [7, 120], [8, 140], [7, 120], [0, 150]],
+      // Flap flap between the two wings-out frames
+      hover: [[6, 220], [7, 220], [6, 220], [7, 220], [6, 220], [7, 220], [0, 200]],
       // The sprout blooms into a flower, then closes back up
       click: [[3, 180], [4, 180], [5, 1200], [4, 150], [3, 150], [0, 150]],
     },
@@ -114,12 +115,17 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/duck-walk.webp',
       frames: 9,
-      width: 364,
-      height: 474,
+      width: 370,
+      height: 475,
       left: [0, 1, 2, 1],
       right: [3, 4, 5, 4],
       rest: 6,
       idle: [[7, 450], [6, 220], [8, 450], [6, 220], [7, 450], [6, 220], [8, 450], [6, 0]],
+      // Its walk frames face mostly forward, so a waddle helps show which way it's going.
+      // Slower, shorter steps than the others so the waddle reads as a relaxed toddle
+      waddle: 2.5,
+      stepMs: 230,
+      speed: 58,
     },
   },
 
@@ -129,8 +135,8 @@ export const villagers: Record<string, Villager> = {
     works: {
       sheet: '/villagers/python.webp',
       frames: 6,
-      width: 442,
-      height: 407,
+      width: 448,
+      height: 409,
       rest: 0,
       // Smile, then show the fangs and tuck them away again
       idle: [[1, 200], [2, 200], [3, 1000], [2, 200], [1, 200], [0, 200]],
@@ -141,8 +147,8 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/python-walk.webp',
       frames: 8,
-      width: 474,
-      height: 409,
+      width: 452,
+      height: 414,
       left: [0, 1, 2, 1],
       right: [3, 4, 5, 4],
       rest: 6,
@@ -161,7 +167,7 @@ export const villagers: Record<string, Villager> = {
       sheet: '/villagers/owl.webp',
       frames: 5,
       width: 358,
-      height: 397,
+      height: 400,
       rest: 0,
       // Dozing off
       idle: [[1, 220], [2, 1300], [1, 220], [0, 200]],
@@ -172,23 +178,25 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/owl-walk.webp',
       frames: 9,
-      width: 358,
-      height: 397,
+      width: 366,
+      height: 409,
+      // Walk frames (feet stepping) plus a tiny waddle. Swap in wing-flapping walk frames once they're drawn.
       left: [3, 4, 5, 4],
       right: [0, 1, 2, 1],
       rest: 6,
       idle: [[7, 220], [8, 1300], [7, 220], [6, 0]],
+      waddle: 1.5,
     },
   },
 
   fish: {
-    name: 'Lucky',
+    name: 'GoldiLucks',
     // Frames: 0 stationary, 1 mouth closed, 2 mouth "o", 3-4 bubbles rising (hover), 5-7 dozing with Z's (click)
     works: {
       sheet: '/villagers/fish.webp',
       frames: 8,
       width: 360,
-      height: 341,
+      height: 344,
       rest: 0,
       // Blub
       idle: [[1, 250], [2, 700], [1, 250], [0, 200]],
@@ -201,12 +209,15 @@ export const villagers: Record<string, Villager> = {
     village: {
       sheet: '/villagers/fish-walk.webp',
       frames: 9,
-      width: 362,
-      height: 370,
+      width: 370,
+      height: 372,
       left: [3, 4, 5, 4],
       right: [0, 1, 2, 1],
       rest: 6,
       idle: [[7, 250], [8, 700], [7, 250], [6, 0]],
+      // The bowl rocks side to side as it toddles along
+      waddle: 1.5,
+      stepMs: 210,
     },
   },
 };

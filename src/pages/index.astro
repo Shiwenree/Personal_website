@@ -1,7 +1,15 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { villagers } from '../data/villagers';
-import '@fontsource/sniglet/800.css'; // bubbly font for the villager's name under its spot
+import '@fontsource/baloo-2/800.css'; // rounded font for the villager's name under its spot
+import { statSync } from 'node:fs';
+
+// Face icons get "?v=<when the file last changed>" on the end, so browsers fetch a redrawn face
+// instead of showing the old one they saved earlier
+const faceUrl = (key: string) => {
+  const file = `/villagers/${key}-face.webp`;
+  return `${file}?v=${Math.round(statSync(`public${file}`).mtimeMs)}`;
+};
 
 // Placeholder projects. Later these come from the projects content collection, and each one
 // gets its villager avatar (shown standing in the meadow on the right) and a link to its project page.
@@ -10,12 +18,12 @@ import '@fontsource/sniglet/800.css'; // bubbly font for the villager's name und
 type Work = { title: string; tag: string; color: string; villager?: string; summary: string; tags: string[]; href?: string };
 const placeholder = 'A few sentences about the project: what it is, why you made it, what you built, and what came out of it.';
 const works: Work[] = [
-  { title: 'Project One – Dog', tag: 'Coming soon', color: '#e9b49a', villager: 'sammy', summary: placeholder, tags: ['Tag', 'Tag'] },
-  { title: 'Project Two – Fox', tag: 'Coming soon', color: '#b9c99a', villager: 'foxy', summary: placeholder, tags: ['Tag', 'Tag'] },
-  { title: 'Project Three – Duck', tag: 'Coming soon', color: '#a9c4d6', villager: 'duck', summary: placeholder, tags: ['Tag', 'Tag'] },
-  { title: 'Project Four – Python', tag: 'Coming soon', color: '#e6cf8f', villager: 'python', summary: placeholder, tags: ['Tag', 'Tag'] },
-  { title: 'Project Five – Night Owl', tag: 'Coming soon', color: '#d4b3d1', villager: 'owl', summary: placeholder, tags: ['Tag', 'Tag'] },
-  { title: 'Project Six – Goldfish', tag: 'Coming soon', color: '#9fd0cf', villager: 'fish', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project One – Sammy', tag: 'Coming soon', color: '#e9b49a', villager: 'sammy', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Two – Rubber Debuggy', tag: 'Coming soon', color: '#a9c4d6', villager: 'duck', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Three – Python', tag: 'Coming soon', color: '#e6cf8f', villager: 'python', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Four – Blossom', tag: 'Coming soon', color: '#b9c99a', villager: 'foxy', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Five – GoldiLucks', tag: 'Coming soon', color: '#9fd0cf', villager: 'fish', summary: placeholder, tags: ['Tag', 'Tag'] },
+  { title: 'Project Six – Night Owl', tag: 'Coming soon', color: '#d4b3d1', villager: 'owl', summary: placeholder, tags: ['Tag', 'Tag'] },
 ];
 const first = works[0].villager ? villagers[works[0].villager] : undefined;
 
@@ -556,7 +564,7 @@ const birds = [
               <span
                 class:list={['swatch', { 'has-face': work.villager }]}
                 aria-hidden="true"
-                style={work.villager && `background-image: url(/villagers/${work.villager}-face.webp)`}
+                style={work.villager && `background-image: url(${faceUrl(work.villager)})`}
               ></span>
               <span class="short" aria-hidden="true">P{i + 1}</span>
               <span class="text">
@@ -600,8 +608,13 @@ const birds = [
           <button type="button" class="sprite" data-sprite hidden={!first} style={first && `background-image: url(${first.works.sheet})`}></button>
         </div>
 
-        <!-- The villager's name in puffy cloud letters, under its spot -->
-        <span class="nameplate" data-stage-name data-arrive>{first?.name}</span>
+        <!-- The villager's name, curving along the bottom of its spot (same lettering as the wooden sign) -->
+        <svg class="nameplate" viewBox="0 0 300 70" aria-hidden="true" data-arrive>
+          <path id="name-curve" d="M 18 14 Q 150 70 282 14" fill="none" />
+          <text>
+            <textPath href="#name-curve" startOffset="50%" text-anchor="middle" data-stage-name>{first?.name}</textPath>
+          </text>
+        </svg>
 
         <!-- Wooden signpost with the project number -->
         <div class="sign" data-arrive>
@@ -688,7 +701,7 @@ const birds = [
         clearTimeout(timer);
         const villager = key ? villagers[key] : undefined;
         const character = sprite.parentElement!;
-        const nameplate = character.parentElement!.querySelector<HTMLElement>('[data-stage-name]');
+        const nameplate = character.parentElement!.querySelector<SVGElement>('[data-stage-name]');
         if (nameplate) nameplate.textContent = villager?.name ?? '';
         sprite.hidden = !villager;
         v = villager?.works ?? null;
@@ -1426,23 +1439,26 @@ const birds = [
     border-radius: 1rem;
   }
 
-  /* Soft rounded white letters with a dark outline so they read on the grass */
+  /* The name curves under the spot like a smile: rounded Baloo 2, white with a dark outline so it reads on the grass */
   .nameplate {
     position: absolute;
     left: 50%;
-    bottom: calc(var(--ground) - 2.9rem);
+    bottom: calc(var(--ground) - 3.4rem);
+    width: min(75%, 20rem); /* same width as the spot, so the curve follows it */
     translate: -50% 0;
-    font-family: 'Sniglet', var(--font-body);
-    font-weight: 800;
-    font-size: 1.8rem;
-    line-height: 1;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
-    color: #fff;
-    -webkit-text-stroke: 6px #2e2622;
-    paint-order: stroke fill;
-    text-shadow: 0 2px 5px rgb(40 70 30 / 0.2);
+    overflow: visible;
     pointer-events: none;
+  }
+  .nameplate text {
+    font-family: 'Baloo 2', var(--font-body);
+    font-size: 27px; /* in the drawing's units (300 wide) */
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    fill: #fff;
+    stroke: #2e2622;
+    stroke-width: 5px;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
   }
   .nameplate.is-arriving {
     animation: puff 0.5s ease-out;

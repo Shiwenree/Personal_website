@@ -1,22 +1,23 @@
-# Foxy's sprite sheets, from characters/Foxy/Fox.png.
+# Foxy's (Blossom's) sprite sheets, from characters/Foxy/Colored.png
+# (colored, background removed; Line_art.png is the earlier uncolored version with the same layout).
 # Usage: python foxy.py <repo root> [preview folder]
 import sys
-from sprites import load, crop, mirror, build
+from sprites import load, crop, mirror, build, VILLAGE_OUTLINE
 
 root = sys.argv[1]
 preview = sys.argv[2] if len(sys.argv) > 2 else None
-sheet = load(f'{root}/characters/Foxy/Fox.png')
+sheet = load(f'{root}/characters/Foxy/Colored.png')
+sheet[960:1055, 1490:1720] = 0  # "Hover" label, right above the drawing (made transparent)
 
 # Frame boxes on the drawing (x0, y0, x1, y1), below the handwritten labels
 stationary = crop(sheet, 150, 205, 520, 680)
 idle1 = crop(sheet, 620, 205, 990, 680)
 idle2 = crop(sheet, 1020, 205, 1400, 680)
 click = crop(sheet, 1880, 195, 2260, 680)
-# Walking right (step, passing, other step), from the redrawn walk with a proper in-between frame
-walk_sheet = load(f'{root}/characters/Foxy/Updated_Fox_walk.png')
-walk1 = crop(walk_sheet, 20, 1040, 394, 1495)
-walk2 = crop(walk_sheet, 394, 1040, 786, 1495)
-walk3 = crop(walk_sheet, 786, 1040, 1180, 1495)
+# Walking right (step, passing, other step)
+walk1 = crop(sheet, 20, 1040, 394, 1495)
+walk2 = crop(sheet, 394, 1040, 786, 1495)
+walk3 = crop(sheet, 786, 1040, 1180, 1495)
 tongue_small = crop(sheet, 1360, 1020, 1780, 1520)  # hover: tongue a little out
 tongue = crop(sheet, 1860, 1030, 2260, 1520)  # hover: tongue all the way out
 
@@ -31,4 +32,4 @@ build(
     [('left1', mirror(walk1), 'head'), ('left2', mirror(walk2), 'head'), ('left3', mirror(walk3), 'head'),
      ('right1', walk1, 'head'), ('right2', walk2, 'head'), ('right3', walk3, 'head'),
      ('stationary', stationary, 'head'), ('idle1', idle1, 'head'), ('idle2', idle2, 'head')],
-    f'{root}/public/villagers/foxy-walk.webp', preview and f'{preview}/foxy-walk-preview.png')
+    f'{root}/public/villagers/foxy-walk.webp', preview and f'{preview}/foxy-walk-preview.png', outline=VILLAGE_OUTLINE)

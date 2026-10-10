@@ -1,0 +1,171 @@
+---
+// The village, drawn from above at an angle (3/4 view): forest all around an open grassy
+// clearing. All original shapes built from code.
+// Two layers: `back` is everything villagers walk in front of; `front` is the row of trees along the
+// bottom edge that villagers walk behind.
+import { MAP, FOREST_EDGE } from '../data/village-map';
+
+interface Props {
+  layer: 'back' | 'front';
+}
+const { layer } = Astro.props;
+
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = seeded(23);
+const between = (a: number, b: number) => a + rand() * (b - a);
+const n = (v: number) => v.toFixed(1);
+
+const INK = '#4e6a8a'; // soft navy outline, same family as the Works page drawings
+
+// ---------- Trees ----------
+// Round trees: a puff of overlapping circles. Outline trick: draw the circles a bit bigger in the ink
+// color first, then the fills on top, so only the outer edge of the whole puff shows a line.
+const ROUND = [
+  ['#6fa25a', '#8fc06c', '#b2d88b'],
+  ['#7cad5e', '#a3cd78', '#c3e199'],
+  ['#8fb35a', '#b5d276', '#d3e79c'],
+  ['#5f9a58', '#7fb466', '#a5cf86'],
+  ['#d3a548', '#e9c467', '#f5dc8e'], // a few autumn trees
+];
+const PINE = [
+  ['#4b845b', '#64a070'],
+  ['#55906a', '#71ad7c'],
+  ['#3f7a55', '#5a9668'],
+];
+
+function roundTree(x: number, y: number, s: number, c: string[]) {
+  const r = 34 * s;
+  const cy = y - 26 * s - r * 0.75;
+  const puffs: [number, number, number][] = [
+    [x, cy, r],
+    [x - r * 0.62, cy + r * 0.28, r * 0.72],
+    [x + r * 0.62, cy + r * 0.28, r * 0.72],
+    [x - r * 0.25, cy - r * 0.5, r * 0.68],
+    [x + r * 0.3, cy - r * 0.42, r * 0.62],
+  ];
+  const circles = (dx: number, dy: number, grow: number, fill: string, scale = 1) =>
+    puffs.map(([px, py, pr]) => `<circle cx="${n(px + dx)}" cy="${n(py + dy)}" r="${n(pr * scale + grow)}" fill="${fill}"/>`).join('');
+  return (
+    `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(r * 1.05)}" ry="${n(r * 0.32)}" fill="#7fa865" opacity="0.45"/>` +
+    `<rect x="${n(x - 5 * s)}" y="${n(y - 30 * s)}" width="${n(10 * s)}" height="${n(30 * s)}" rx="${n(3 * s)}" fill="#8a6a4a" stroke="${INK}" stroke-width="2"/>` +
+    circles(0, 0, 2.6, INK) +
+    circles(0, 0, 0, c[0]) +
+    circles(-r * 0.1, -r * 0.12, 0, c[1], 0.82) +
+    `<circle cx="${n(x - r * 0.35)}" cy="${n(cy - r * 0.45)}" r="${n(r * 0.22)}" fill="${c[2]}"/>` +
+    `<circle cx="${n(x + r * 0.15)}" cy="${n(cy - r * 0.6)}" r="${n(r * 0.13)}" fill="${c[2]}"/>`
+  );
+}
+
+function pineTree(x: number, y: number, s: number, c: string[]) {
+  const tiers = 3;
+  const h = 46 * s;
+  let outline = '';
+  let fill = '';
+  for (let i = 0; i < tiers; i++) {
+    const w = (40 - i * 9) * s;
+    const base = y - 18 * s - i * h * 0.55;
+    const top = base - h;
+    const d = `M ${n(x - w)} ${n(base)} Q ${n(x)} ${n(base + 10 * s)} ${n(x + w)} ${n(base)} L ${n(x + 3 * s)} ${n(top)} Q ${n(x)} ${n(top - 4 * s)} ${n(x - 3 * s)} ${n(top)} Z`;
+    outline += `<path d="${d}" fill="${INK}" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>`;
+    fill += `<path d="${d}" fill="${c[0]}"/>`;
+    // lighter left side, like light coming from the top left
+    fill += `<path d="M ${n(x - w * 0.9)} ${n(base - 1)} Q ${n(x - w * 0.3)} ${n(base + 4 * s)} ${n(x)} ${n(base + 2 * s)} L ${n(x)} ${n(top + 4 * s)} Z" fill="${c[1]}"/>`;
+  }
+  return (
+    `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(30 * s)}" ry="${n(10 * s)}" fill="#6f9a5a" opacity="0.45"/>` +
+    `<rect x="${n(x - 4.5 * s)}" y="${n(y - 22 * s)}" width="${n(9 * s)}" height="${n(22 * s)}" rx="2" fill="#7d5e42" stroke="${INK}" stroke-width="2"/>` +
+    outline +
+    fill
+  );
+}
+
+// Scatter trees on a jittered grid, keeping only the spots outside the clearing
+type Item = { x: number; y: number; svg: string };
+const trees: Item[] = [];
+for (let gy = -30; gy <= MAP.height + 70; gy += 62) {
+  for (let gx = -40; gx <= MAP.width + 40; gx += 68) {
+    const x = gx + between(-22, 22) + (Math.round(gy / 62) % 2) * 34;
+    const y = gy + between(-18, 18);
+    const dx = (x - FOREST_EDGE.cx) / FOREST_EDGE.rx;
+    const dy = (y - FOREST_EDGE.cy) / FOREST_EDGE.ry;
+    const d = dx * dx + dy * dy;
+    if (d < 1 + rand() * 0.12) continue;
+    const s = between(0.85, 1.25);
+    const pine = rand() < 0.38;
+    const svg = pine ? pineTree(x, y, s * 1.05, PINE[Math.floor(rand() * PINE.length)]) : roundTree(x, y, s, ROUND[rand() < 0.1 ? 4 : Math.floor(rand() * 4)]);
+    trees.push({ x, y, svg });
+  }
+}
+trees.sort((a, b) => a.y - b.y);
+// Villagers never walk below ~880, so trees rooted lower than this are drawn in front of them
+const FRONT_FROM = 800;
+const backTrees = trees.filter((t) => t.y <= FRONT_FROM);
+const frontTrees = trees.filter((t) => t.y > FRONT_FROM).map((t) => t.svg).join('');
+
+// ---------- Ground details ----------
+const flowers = Array.from({ length: 48 }, () => {
+  const a = rand() * Math.PI * 2;
+  const r = Math.sqrt(rand()) * 0.9;
+  return {
+    x: FOREST_EDGE.cx + Math.cos(a) * r * 640,
+    y: FOREST_EDGE.cy + Math.sin(a) * r * 370,
+    color: ['#fffdf5', '#f6c1cf', '#f7e08a', '#c9d8f5'][Math.floor(rand() * 4)],
+  };
+});
+const flowerSvg = flowers
+  .map((f) =>
+    [0, 1, 2]
+      .map((i) => {
+        const fx = f.x + Math.cos(i * 2.1) * 9;
+        const fy = f.y + Math.sin(i * 2.1) * 5;
+        return `<circle cx="${n(fx)}" cy="${n(fy)}" r="3.4" fill="${f.color}"/><circle cx="${n(fx)}" cy="${n(fy)}" r="1.3" fill="#e9b949"/>`;
+      })
+      .join(''),
+  )
+  .join('');
+
+
+// Trees are drawn top of the map first, so lower ones overlap them
+const standing = backTrees.map((t) => t.svg).join('');
+
+const scene = `
+  <defs><filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="40"/></filter></defs>
+  <rect width="${MAP.width}" height="${MAP.height}" fill="#a9cf86"/>
+  <g filter="url(#soft)">
+    <ellipse cx="${FOREST_EDGE.cx}" cy="${FOREST_EDGE.cy + 15}" rx="${FOREST_EDGE.rx * 0.95}" ry="${FOREST_EDGE.ry * 0.92}" fill="#bfdd99"/>
+    <ellipse cx="${FOREST_EDGE.cx - 120}" cy="${FOREST_EDGE.cy - 20}" rx="360" ry="190" fill="#cae5a6"/>
+  </g>
+  ${flowerSvg}
+  ${standing}
+`;
+---
+
+{
+  layer === 'back' ? (
+    <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={scene} />
+  ) : (
+    <svg class="scene front" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={frontTrees} />
+  )
+}
+
+<style>
+  .scene {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  /* trees along the bottom edge: drawn over the villagers, and clicks pass through */
+  .front {
+    z-index: 5000;
+    pointer-events: none;
+  }
+</style>

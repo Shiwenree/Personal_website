@@ -9,10 +9,15 @@ from skimage.draw import line
 from skimage.morphology import skeletonize
 
 INK = np.array([50, 120, 240])
+# Outline thickness (px) added to the Village sheets, where the villagers are drawn small
+VILLAGE_OUTLINE = 4
 
 
 def load(path):
-    return np.array(Image.open(path).convert('RGB')).astype(float)
+    """Line art on white: RGB. Colored art with the background already removed: RGBA (kept as is).
+    (Some line-art files have an alpha channel that's fully opaque; those count as line art.)"""
+    a = np.array(Image.open(path).convert('RGBA')).astype(float)
+    return a if a[..., 3].min() < 255 else a[..., :3]
 
 
 def crop(a, x0, y0, x1, y1):
@@ -47,11 +52,38 @@ def bridge(ink, reach=70):
     return nd.binary_dilation(out, iterations=1)
 
 
+def find_anchor(xs, ys, anchor):
+    bottom = ys.max()
+    if anchor == 'head':
+        part = xs[ys < ys.min() + 130]
+    elif anchor == 'center':  # middle of the whole drawing (for things that tilt, like a waddling bowl)
+        part = xs
+    else:
+        part = xs[ys > bottom - 30]
+    return (part.min() + part.max()) / 2, bottom
+
+
+def cutout_colored(a, anchor):
+    """Colored art whose background is already transparent: just tidy it and find the anchor."""
+    alpha = a[..., 3] > 8
+    # Drop stray specks (little bits left over from erasing the background)
+    lab, n = nd.label(nd.binary_dilation(alpha, iterations=3))
+    sizes = nd.sum(alpha, lab, range(1, n + 1))
+    keep = np.isin(lab, 1 + np.nonzero(sizes >= 40)[0])
+    rgba = a.copy()
+    rgba[~keep, 3] = 0
+    ys, xs = np.nonzero(rgba[..., 3] > 8)
+    return (rgba, *find_anchor(xs, ys, anchor), 0)
+
+
 def cutout(a, anchor='feet', fill=0.55, center=True):
-    """Returns (rgba, anchor_x, anchor_y). anchor='feet' centers on the feet (good for front views);
+    """Returns (rgba, anchor_x, anchor_y). Colored art (RGBA) skips the filling; see cutout_colored.
+    anchor='feet' centers on the feet (good for front views);
     'head' centers on the head (good for walk cycles, where a lifted paw or tail would pull the center).
     fill / center tune the "is the body filled in yet?" check: lower fill and center=False for
     characters that don't fill much of their box, like a coiled snake."""
+    if a.shape[-1] == 4:
+        return cutout_colored(a, anchor)
     ink = (765 - a.sum(-1)) > 60
     # Drop stray specks
     lab, n = nd.label(nd.binary_dilation(ink, iterations=3))
@@ -88,21 +120,44 @@ def cutout(a, anchor='feet', fill=0.55, center=True):
     rgba[sil, :3] = a[sil]
     rgba[sil, 3] = 255
 
-    bottom = ys.max()
-    if anchor == 'head':
-        part = xs[ys < ys.min() + 130]
-    elif anchor == 'center':  # middle of the whole drawing (for things that tilt, like a waddling bowl)
-        part = xs
-    else:
-        part = xs[ys > bottom - 30]
-    return rgba, (part.min() + part.max()) / 2, bottom, r
+    return (rgba, *find_anchor(xs, ys, anchor), r)
 
 
-def build(frames, out_path, preview_path=None, **fill_check):
-    """frames: list of (name, rgb_array, anchor). Packs them side by side into one sheet."""
+def add_outline(rgba, width):
+    """A solid outline `width` px thick around the outside of the character's body, in the
+    character's own line color, so it still reads when drawn small (the Village)."""
+    pad = width + 2
+    rgba = np.pad(rgba, ((pad, pad), (pad, pad), (0, 0)))
+    solid = rgba[..., 3] > 128
+    # Only the body (the biggest piece), not loose bits like motion marks, Z's or splashes
+    lab, n = nd.label(nd.binary_dilation(solid, iterations=2))
+    biggest = 1 + np.argmax(nd.sum(solid, lab, range(1, n + 1)))
+    body = nd.binary_fill_holes(solid & (lab == biggest))
+    # Line color: the darkest third of the pixels along the body's edge
+    edge = body & ~nd.binary_erosion(body, iterations=4)
+    px = rgba[edge][:, :3]
+    lum = px @ [0.3, 0.59, 0.11]
+    color = np.median(px[lum <= np.percentile(lum, 33)], axis=0)
+    # Soft-edged ring outside the body, drawn underneath the drawing
+    dist = nd.distance_transform_edt(~body)
+    ring = np.clip(width + 0.5 - dist, 0, 1)
+    a = rgba[..., 3:] / 255
+    out = np.empty_like(rgba)
+    out[..., 3] = (a[..., 0] + ring * (1 - a[..., 0])) * 255
+    total = np.maximum(out[..., 3:] / 255, 1e-6)
+    out[..., :3] = (rgba[..., :3] * a + color * (ring[..., None] * (1 - a))) / total
+    return out, pad
+
+
+def build(frames, out_path, preview_path=None, outline=0, **fill_check):
+    """frames: list of (name, rgb_array, anchor). Packs them side by side into one sheet.
+    outline: add a solid outline this many px thick around each frame (see add_outline)."""
     done = []
     for name, a, anchor in frames:
         rgba, cx, by, r = cutout(a, anchor, **fill_check)
+        if outline:
+            rgba, pad = add_outline(rgba, outline)
+            cx, by = cx + pad, by + pad
         ys, xs = np.nonzero(rgba[..., 3] > 8)
         done.append((name, rgba, cx, by, xs.min(), xs.max(), ys.min(), ys.max()))
         print(f'{name:10} closing r={r:2}  size {rgba.shape[1]}x{rgba.shape[0]}')

@@ -8,12 +8,12 @@ root = sys.argv[1]
 preview = sys.argv[2] if len(sys.argv) > 2 else None
 # villager: (frame width in the Works sheet, face center as a fraction of the drawing's box (x, y), size as a fraction of its width)
 FACES = {
-    'sammy': (440, (0.5, 0.3), 0.9),
+    'sammy': (432, (0.4, 0.32), 0.9),  # his tail sticks out to the right, so the face is left of center
     'foxy': (456, (0.42, 0.3), 0.86),
-    'duck': (330, (0.5, 0.4), 0.95),
-    'python': (442, (0.24, 0.24), 0.56),
+    'duck': (338, (0.5, 0.4), 0.95),
+    'python': (448, (0.24, 0.24), 0.56),
     'owl': (358, (0.5, 0.3), 0.88),
-    'fish': (360, (0.5, 0.5), 1.0),
+    'fish': (360, (0.4, 0.48), 0.5),  # just the fish's face, inside the bowl
 }
 SIZE = 160  # px; shown at up to ~52px, so this stays sharp on high-res screens
 tiles = []

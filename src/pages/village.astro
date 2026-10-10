@@ -1,123 +1,138 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import VillageScene from '../components/VillageScene.astro';
 import { villagers } from '../data/villagers';
+import { MAP } from '../data/village-map';
+import { statSync } from 'node:fs';
 
-// A first test of villagers walking around, before the real Phaser village exists.
-// Just a patch of meadow where the villagers wander: side to side, up and down, and diagonally.
+// Sprite sheets get "?v=<when the file last changed>" so browsers fetch redrawn ones instead of old saved copies
+const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${file}`).mtimeMs)}`;
 
-// Scatter some daisies with a seeded random generator, so they land in the same places every build
-function seeded(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const rand = seeded(7);
-const daisies = Array.from({ length: 26 }, () => ({
-  x: (rand() * 100).toFixed(1),
-  y: (rand() * 100).toFixed(1),
-  r: (2.5 + rand() * 2).toFixed(1),
-  pink: rand() < 0.3,
-}));
+// A first version of the village, before the real Phaser game exists: a drawn map (forest around a
+// clearing with paths and a few buildings) where the villagers wander and can be called over.
 ---
 
 <BaseLayout title="Village">
   <h1>Village</h1>
-  <p class="intro">The village is still being built. A few villagers are out for a walk in the meantime. Click the meadow to call one over.</p>
+  <p class="intro">The village is still being built. Wander around, or click anywhere in the clearing to call a villager over.</p>
 
-  <div class="meadow" data-meadow>
-    <svg class="flowers" aria-hidden="true">
-      {daisies.map((d) => (
-        <g>
-          <circle cx={`${d.x}%`} cy={`${d.y}%`} r={d.r} fill={d.pink ? '#f3b8c8' : '#fffdf5'} />
-          <circle cx={`${d.x}%`} cy={`${d.y}%`} r={(+d.r * 0.4).toFixed(1)} fill="#f2c94c" />
-        </g>
+  <!-- On narrow screens the map keeps its size and scrolls sideways instead of shrinking to nothing -->
+  <div class="scroller">
+    <div class="map" data-map style={`aspect-ratio: ${MAP.width} / ${MAP.height}`}>
+      <VillageScene layer="back" />
+
+      {Object.entries(villagers).map(([key, { name, village: v }]) => (
+        <div
+          class="walker"
+          data-walker={key}
+          role="img"
+          aria-label={`${name} walking around`}
+          style={`--fw: ${v.width}; --fh: ${v.height}; --frames: ${v.frames}`}
+        >
+          <span class="shadow"></span>
+          <span class="sprite" style={`background-image: url(${versioned(v.sheet)})`}></span>
+        </div>
       ))}
-    </svg>
 
-    {Object.entries(villagers).map(([key, { name, village: v }]) => (
-      <div
-        class="walker"
-        data-walker={key}
-        role="img"
-        aria-label={`${name} walking around`}
-        style={`--fw: ${v.width}; --fh: ${v.height}; --frames: ${v.frames}`}
-      >
-        <span class="shadow"></span>
-        <span class="sprite" style={`background-image: url(${v.sheet})`}></span>
-      </div>
-    ))}
+      <VillageScene layer="front" />
+    </div>
   </div>
 </BaseLayout>
 
 <script>
   import { villagers } from '../data/villagers';
+  import { MAP, WALKABLE, OBSTACLES, HUB } from '../data/village-map';
 
-  // Each villager wanders on its own: side to side, up and down, and diagonally, resting in between.
+  // Each villager wanders the clearing on its own: side to side, up and down, and diagonally, resting
+  // in between, and never walking through buildings, the garden or the pond.
+  // Positions are in map units (the map is 1600 x 1000), converted to pixels when drawn.
   // Which sprite frames make up the walk and idle animations is in src/data/villagers.ts.
-  const SPEED = 70; // default walking speed, px per second (a villager can set its own)
+  const SPEED = 70; // default walking speed, map units per second (a villager can set its own)
   const STEP_MS = 170; // default time per walk frame
+  const MARGIN = 26; // how close a villager's feet may get to an obstacle
 
-  for (const meadow of document.querySelectorAll<HTMLElement>('[data-meadow]')) {
+  type Point = { x: number; y: number };
+
+  const canStand = (x: number, y: number) => {
+    const dx = (x - WALKABLE.cx) / WALKABLE.rx;
+    const dy = (y - WALKABLE.cy) / WALKABLE.ry;
+    if (dx * dx + dy * dy > 1) return false;
+    return !OBSTACLES.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6);
+  };
+  // Is the straight line between two points walkable all the way?
+  const clearPath = (a: Point, b: Point) => {
+    const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 10);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      if (!canStand(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) return false;
+    }
+    return true;
+  };
+  // A route from a to b: straight if possible, otherwise via the plaza. Null if neither works.
+  const route = (a: Point, b: Point): Point[] | null => {
+    if (!canStand(b.x, b.y)) return null;
+    if (clearPath(a, b)) return [b];
+    if (clearPath(a, HUB) && clearPath(HUB, b)) return [HUB, b];
+    return null;
+  };
+  const randomSpot = (): Point => {
+    for (let i = 0; i < 200; i++) {
+      const p = { x: WALKABLE.cx + (Math.random() * 2 - 1) * WALKABLE.rx, y: WALKABLE.cy + (Math.random() * 2 - 1) * WALKABLE.ry };
+      if (canStand(p.x, p.y)) return p;
+    }
+    return HUB;
+  };
+
+  for (const map of document.querySelectorAll<HTMLElement>('[data-map]')) {
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    // On phones the map is wider than the screen; start scrolled to the middle (the plaza)
+    const scroller = map.parentElement!;
+    scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+    let scale = map.clientWidth / MAP.width; // pixels per map unit
 
-    const walkerEls = [...meadow.querySelectorAll<HTMLElement>('[data-walker]')];
-    const walkers = walkerEls.map((el, index) => {
+    const walkers = [...map.querySelectorAll<HTMLElement>('[data-walker]')].map((el, index) => {
       const v = villagers[el.dataset.walker!].village;
       const sprite = el.querySelector<HTMLElement>('.sprite')!;
       const show = (frame: number) => {
         sprite.style.backgroundPositionX = `${(frame / (v.frames - 1)) * 100}%`;
       };
 
-      // Position is in px from the meadow's top-left; it's where the villager's feet touch the ground
-      let minX = 0, maxX = 0, minY = 0, maxY = 0;
-      const measure = () => {
-        const size = el.offsetWidth;
-        minX = size / 2;
-        maxX = meadow.clientWidth - size / 2;
-        minY = el.offsetHeight * 0.85;
-        maxY = meadow.clientHeight - 12;
-      };
-      measure();
-      const clampX = (n: number) => Math.min(maxX, Math.max(minX, n));
-      const clampY = (n: number) => Math.min(maxY, Math.max(minY, n));
-      // Start spread out across the meadow, alternating near and far
-      let x = clampX(minX + (maxX - minX) * ((index + 0.5) / walkerEls.length));
-      let y = clampY(minY + (maxY - minY) * (index % 2 ? 0.3 : 0.75));
-      let target: { x: number; y: number } | null = null;
+      let { x, y } = randomSpot();
+      let path: Point[] = []; // where it's walking to (the last point is the destination)
       let facing = index % 2 ? v.left : v.right;
-      let restUntil = performance.now() + 800 + index * 1500;
+      let restUntil = performance.now() + 800 + index * 1200;
       let idleTimer = 0;
       let walkTime = 0;
 
       const place = () => {
-        // A little smaller further back, and further back walks behind closer things
-        const depth = (y - minY) / Math.max(maxY - minY, 1);
-        el.style.translate = `${x}px ${y}px`;
-        el.style.scale = String(0.85 + depth * 0.15);
+        // A touch smaller further back, and further back walks behind closer things
+        const depth = (y - (WALKABLE.cy - WALKABLE.ry)) / (WALKABLE.ry * 2);
+        el.style.translate = `${x * scale}px ${y * scale}px`;
+        el.style.scale = String(0.9 + depth * 0.1);
         el.style.zIndex = String(Math.round(y));
       };
 
-      // Pick somewhere to wander: mix of straight across, straight up/down, and diagonal trips
+      // Pick somewhere to wander: a mix of straight across, straight up/down, and diagonal trips
       const wander = () => {
-        const w = maxX - minX, h = maxY - minY;
-        const kind = Math.random();
-        const dist = 0.25 + Math.random() * 0.45;
-        const sx = Math.random() < 0.5 ? -1 : 1, sy = Math.random() < 0.5 ? -1 : 1;
-        let tx = x, ty = y;
-        if (kind < 0.35) tx = x + sx * dist * w; // side to side
-        else if (kind < 0.6) ty = y + sy * dist * h * 1.5; // up or down
-        else { tx = x + sx * dist * w * 0.7; ty = y + sy * dist * h; } // diagonal
-        // If that would walk into the edge, go the other way instead
-        if (tx !== clampX(tx)) tx = x - (tx - x);
-        if (ty !== clampY(ty)) ty = y - (ty - y);
-        target = { x: clampX(tx), y: clampY(ty) };
+        for (let attempt = 0; attempt < 25; attempt++) {
+          const kind = Math.random();
+          const dist = 120 + Math.random() * 280;
+          const sx = Math.random() < 0.5 ? -1 : 1, sy = Math.random() < 0.5 ? -1 : 1;
+          let tx = x, ty = y;
+          if (kind < 0.35) tx = x + sx * dist; // side to side
+          else if (kind < 0.6) ty = y + sy * dist * 0.6; // up or down
+          else { tx = x + sx * dist * 0.75; ty = y + sy * dist * 0.5; } // diagonal
+          if (canStand(tx, ty) && clearPath({ x, y }, { x: tx, y: ty })) {
+            path = [{ x: tx, y: ty }];
+            return;
+          }
+        }
+        restUntil = performance.now() + 1500; // nowhere good right now; try again shortly
       };
 
       const rest = (now: number) => {
-        target = null;
+        path = [];
+        sprite.style.rotate = '';
         // Most villagers rest facing front; ones drawn resting sideways keep facing the way they walked
         if (v.restRight !== undefined && facing === v.right) {
           show(v.restRight);
@@ -125,12 +140,12 @@ const daisies = Array.from({ length: 26 }, () => ({
           return;
         }
         show(v.rest);
-        restUntil = now + 1200 + Math.random() * 2800;
+        restUntil = now + 1500 + Math.random() * 3500;
         // Sometimes play the idle animation while resting
         if (Math.random() < 0.6) {
           let i = 0;
           const next = () => {
-            if (target || i === v.idle.length) return;
+            if (path.length || i === v.idle.length) return;
             const [frame, ms] = v.idle[i++];
             show(frame);
             idleTimer = window.setTimeout(next, ms);
@@ -142,24 +157,26 @@ const daisies = Array.from({ length: 26 }, () => ({
       show(v.rest);
       place();
       return {
-        distanceTo: (px: number, py: number) => Math.hypot(px - x, py - y),
-        goTo(px: number, py: number) {
+        distanceTo: (p: Point) => Math.hypot(p.x - x, p.y - y),
+        goTo(p: Point) {
+          const r = route({ x, y }, p);
+          if (!r) return false;
           clearTimeout(idleTimer);
-          target = { x: clampX(px), y: clampY(py) };
+          path = r;
+          return true;
         },
         resize() {
-          measure();
-          x = clampX(x);
-          y = clampY(y);
           place();
         },
         tick(now: number, dt: number) {
-          if (!target && now >= restUntil) wander();
-          if (target) {
+          if (!path.length && now >= restUntil) wander();
+          if (path.length) {
+            const target = path[0];
             const dx = target.x - x, dy = target.y - y;
             const dist = Math.hypot(dx, dy);
             if (dist < 2) {
-              rest(now);
+              path.shift();
+              if (!path.length) rest(now);
             } else {
               const move = Math.min(dist, (v.speed ?? SPEED) * dt);
               x += (dx / dist) * move;
@@ -168,7 +185,15 @@ const daisies = Array.from({ length: 26 }, () => ({
               // last faced and walks the same way, just moving up or down the screen.
               if (Math.abs(dx) > 4) facing = dx < 0 ? v.left : v.right;
               walkTime += dt * 1000;
-              show(facing[Math.floor(walkTime / (v.stepMs ?? STEP_MS)) % facing.length]);
+              const stepMs = v.stepMs ?? STEP_MS;
+              show(facing[Math.floor(walkTime / stepMs) % facing.length]);
+              // Waddle: rock from foot to foot (one full rock every two steps), tipped a little toward
+              // the direction of travel
+              if (v.waddle) {
+                const lean = (facing === v.left ? -1 : 1) * v.waddle * 0.4;
+                const rock = Math.sin((walkTime / stepMs) * Math.PI) * v.waddle;
+                sprite.style.rotate = `${lean + rock}deg`;
+              }
             }
           }
           place();
@@ -176,16 +201,19 @@ const daisies = Array.from({ length: 26 }, () => ({
       };
     });
 
-    // Click (or tap) the meadow and the closest villager walks to that spot
-    meadow.addEventListener('click', (e) => {
+    // Click (or tap) the clearing and the closest villager that can get there walks over
+    map.addEventListener('click', (e) => {
       if (reduceMotion.matches) return;
-      const box = meadow.getBoundingClientRect();
-      const px = e.clientX - box.left, py = e.clientY - box.top;
-      const closest = walkers.reduce((a, b) => (b.distanceTo(px, py) < a.distanceTo(px, py) ? b : a));
-      closest.goTo(px, py);
+      const box = map.getBoundingClientRect();
+      const p = { x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale };
+      const byDistance = [...walkers].sort((a, b) => a.distanceTo(p) - b.distanceTo(p));
+      for (const w of byDistance) if (w.goTo(p)) break;
     });
 
-    new ResizeObserver(() => walkers.forEach((w) => w.resize())).observe(meadow);
+    new ResizeObserver(() => {
+      scale = map.clientWidth / MAP.width;
+      walkers.forEach((w) => w.resize());
+    }).observe(map);
 
     if (!reduceMotion.matches) {
       let last = performance.now();
@@ -210,23 +238,18 @@ const daisies = Array.from({ length: 26 }, () => ({
     color: var(--muted);
   }
 
-  .meadow {
+  .scroller {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .map {
     position: relative;
-    height: clamp(22rem, 55vh, 32rem);
+    min-width: 48rem;
     overflow: hidden;
     border-radius: var(--radius);
-    background:
-      radial-gradient(ellipse 40% 30% at 25% 35%, rgb(215 233 189 / 0.7), transparent),
-      radial-gradient(ellipse 35% 25% at 75% 70%, rgb(167 201 135 / 0.45), transparent),
-      linear-gradient(#c9e2a6, #aecf8c);
-    box-shadow: var(--shadow);
+    background: #a9cf86;
     cursor: pointer;
-  }
-  .flowers {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
   }
 
   /* The walker's top-left corner sits at the villager's feet; the sprite hangs up and to the left from there */
@@ -234,8 +257,8 @@ const daisies = Array.from({ length: 26 }, () => ({
     position: absolute;
     top: 0;
     left: 0;
-    /* Sized to one frame of the sheet, scaled by frame width so every villager is drawn at the same scale */
-    width: calc(clamp(6.5rem, 14vw, 9rem) * var(--fw) / 450);
+    /* Sized as a share of the map's width, scaled by frame width so every villager is drawn at the same scale */
+    width: calc(5.6% * var(--fw) / 450);
     aspect-ratio: var(--fw) / var(--fh);
     transform-origin: 0 0;
     pointer-events: none;
@@ -251,6 +274,7 @@ const daisies = Array.from({ length: 26 }, () => ({
   }
   .sprite {
     background: no-repeat 0 0 / calc(var(--frames) * 100%) 100%;
+    transform-origin: 50% 100%; /* waddles pivot at the feet */
   }
   .shadow {
     left: -32%;
@@ -258,6 +282,6 @@ const daisies = Array.from({ length: 26 }, () => ({
     height: 14%;
     margin-bottom: -7%;
     border-radius: 50%;
-    background: rgb(60 90 40 / 0.18);
+    background: rgb(60 90 40 / 0.22);
   }
 </style>

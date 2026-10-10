@@ -1,12 +1,13 @@
-# The python's sprite sheets, from characters/Python/Snake.png.
+# The python's sprite sheets, from characters/Python/Colored.png
+# (colored, background removed; line_art.png is the earlier uncolored version with the same layout).
 # Usage: python python.py <repo root> [preview folder]
 import sys
-from sprites import load, crop, mirror, build
+from sprites import load, crop, mirror, build, VILLAGE_OUTLINE
 
 root = sys.argv[1]
 preview = sys.argv[2] if len(sys.argv) > 2 else None
-sheet = load(f'{root}/characters/Python/Snake.png')
-sheet[30:92, 1388:1520] = 255  # "Hover" label, right next to the drawing
+sheet = load(f'{root}/characters/Python/Colored.png')
+sheet[570:645, 1000:1230] = 0  # "Stationary" label, right above the drawing (made transparent)
 
 click = crop(sheet, 300, 128, 760, 545)
 hover = crop(sheet, 1170, 75, 1600, 490)
@@ -30,4 +31,4 @@ build(
     [(f'left{i + 1}', mirror(f), 'feet') for i, f in enumerate(walk)]
     + [(f'right{i + 1}', f, 'feet') for i, f in enumerate(walk)]
     + [('rest_left', stationary, 'feet'), ('rest_right', mirror(stationary), 'feet')],
-    f'{root}/public/villagers/python-walk.webp', preview and f'{preview}/python-walk-preview.png', fill=0.5, center=False)
+    f'{root}/public/villagers/python-walk.webp', preview and f'{preview}/python-walk-preview.png', fill=0.5, center=False, outline=VILLAGE_OUTLINE)

@@ -1,11 +1,12 @@
-# The night owl's sprite sheets, from characters/Night-Owl/Owl.png.
+# The night owl's sprite sheets, from characters/Night-Owl/Colored.png
+# (colored, background removed; line_art.png is the earlier uncolored version with the same layout).
 # Usage: python owl.py <repo root> [preview folder]
 import sys
-from sprites import load, crop, mirror, build
+from sprites import load, crop, mirror, build, VILLAGE_OUTLINE
 
 root = sys.argv[1]
 preview = sys.argv[2] if len(sys.argv) > 2 else None
-sheet = load(f'{root}/characters/Night-Owl/Owl.png')
+sheet = load(f'{root}/characters/Night-Owl/Colored.png')
 
 stationary = crop(sheet, 70, 62, 440, 470)
 hover = crop(sheet, 780, 95, 1145, 500)
@@ -25,4 +26,4 @@ build(
     [(f'walk{i + 1}', f, 'head') for i, f in enumerate(walk)]
     + [(f'walk_mirror{i + 1}', mirror(f), 'head') for i, f in enumerate(walk)]
     + [('stationary', stationary, 'head'), ('eyes_half', eyes_half, 'head'), ('eyes_closed', eyes_closed, 'head')],
-    f'{root}/public/villagers/owl-walk.webp', preview and f'{preview}/owl-walk-preview.png')
+    f'{root}/public/villagers/owl-walk.webp', preview and f'{preview}/owl-walk-preview.png', outline=VILLAGE_OUTLINE)

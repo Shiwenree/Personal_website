@@ -1,8 +1,251 @@
 ---
+import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { art } from '../data/art';
 ---
 
 <BaseLayout title="Art">
   <h1>Art</h1>
-  <p>Gallery coming soon.</p>
+  <p class="intro">Drawings, characters, sketchbook pages, dance, and photos from places I've been.</p>
+
+  <!-- Masonry: pieces flow down columns, each keeping its own height -->
+  <ul class="gallery" data-gallery>
+    {art.map((piece, i) => (
+      <li class="piece">
+        <figure>
+          {piece.kind === 'image' ? (
+            <Image
+              src={piece.image}
+              alt={piece.alt}
+              widths={[400, 700, 1000]}
+              sizes="(max-width: 40rem) 100vw, (max-width: 64rem) 50vw, 22rem"
+              loading={i < 3 ? 'eager' : 'lazy'}
+            />
+          ) : (
+            <div class="video-wrap">
+              <video
+                data-video
+                src={piece.src}
+                poster={piece.poster}
+                width={piece.width}
+                height={piece.height}
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                aria-label={piece.alt}
+              ></video>
+              <!-- Little badge so you can tell it's a video before it plays -->
+              <span class="badge" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+              </span>
+            </div>
+          )}
+          <figcaption>
+            <span class="title">{piece.title}</span>
+            <span class="category">{piece.category}</span>
+            {piece.caption && <span class="caption">{piece.caption}</span>}
+          </figcaption>
+        </figure>
+      </li>
+    ))}
+  </ul>
 </BaseLayout>
+
+<script>
+  // Videos play (muted) in two ways:
+  //  - Like a YouTube feed: when you stop scrolling, the video closest to the middle of the screen plays.
+  //    It pauses again once you scroll it away.
+  //  - On hover, any video plays while the mouse is over it.
+  // With "reduce motion" turned on nothing plays by itself; tapping a video plays or pauses it instead.
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const videos = [...document.querySelectorAll<HTMLVideoElement>('[data-video]')];
+  const visible = new Set<HTMLVideoElement>();
+  let featured: HTMLVideoElement | null = null; // the one chosen by stopping the scroll
+  const hovered = new Set<HTMLVideoElement>();
+
+  const sync = (video: HTMLVideoElement) => {
+    const shouldPlay = hovered.has(video) || video === featured;
+    if (shouldPlay && video.paused) video.play().catch(() => {});
+    if (!shouldPlay && !video.paused) video.pause();
+    video.closest('.video-wrap')?.classList.toggle('is-playing', shouldPlay);
+  };
+
+  // Pick the visible video nearest the middle of the screen
+  const pickFeatured = () => {
+    if (reduceMotion.matches) return;
+    const middle = innerHeight / 2;
+    let best: HTMLVideoElement | null = null;
+    let bestDistance = Infinity;
+    for (const video of visible) {
+      const r = video.getBoundingClientRect();
+      const distance = Math.abs(r.top + r.height / 2 - middle);
+      if (distance < bestDistance) [best, bestDistance] = [video, distance];
+    }
+    featured = best;
+    videos.forEach(sync);
+  };
+
+  // Track which videos are at least half on screen; one scrolled away stops right away
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target as HTMLVideoElement;
+        if (entry.isIntersecting) visible.add(video);
+        else {
+          visible.delete(video);
+          if (featured === video) featured = null;
+          sync(video);
+        }
+      }
+    },
+    { threshold: 0.5 },
+  );
+  videos.forEach((v) => observer.observe(v));
+
+  // "Stopped scrolling" = no scroll events for a moment
+  let scrollTimer = 0;
+  addEventListener(
+    'scroll',
+    () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(pickFeatured, 350);
+    },
+    { passive: true },
+  );
+  // Also check once the page has settled, in case a video is already in view
+  setTimeout(pickFeatured, 600);
+
+  for (const video of videos) {
+    video.addEventListener('pointerenter', (e) => {
+      if (e.pointerType !== 'mouse' || reduceMotion.matches) return;
+      hovered.add(video);
+      sync(video);
+    });
+    video.addEventListener('pointerleave', () => {
+      hovered.delete(video);
+      sync(video);
+    });
+    // Tapping (or clicking with reduce motion on) plays or pauses it
+    video.addEventListener('click', () => {
+      if (video.paused) {
+        featured = video;
+        video.play().catch(() => {});
+      } else {
+        if (featured === video) featured = null;
+        hovered.delete(video);
+        video.pause();
+      }
+      video.closest('.video-wrap')?.classList.toggle('is-playing', !video.paused);
+    });
+  }
+</script>
+
+<style>
+  h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 5vw, 3rem);
+  }
+  .intro {
+    margin: 0.25rem 0 2rem;
+    color: var(--muted);
+  }
+
+  /* CSS columns make the masonry: 3 columns on wide screens, 2 on tablets, 1 on phones */
+  .gallery {
+    columns: 3 18rem;
+    column-gap: 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .piece {
+    break-inside: avoid; /* keep each piece in one column */
+    margin-bottom: 1.25rem;
+  }
+  figure {
+    margin: 0;
+    padding: 0.6rem 0.6rem 0.9rem;
+    border-radius: 0.5rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    transition: translate 0.15s ease;
+  }
+  figure:hover {
+    translate: 0 -3px;
+  }
+  figure img,
+  video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.3rem;
+  }
+  video {
+    cursor: pointer;
+    background: #fff;
+  }
+
+  .video-wrap {
+    position: relative;
+  }
+  .badge {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 999px;
+    background: rgb(46 38 34 / 0.6);
+    color: #fff;
+    pointer-events: none;
+    transition: opacity 0.2s ease, scale 0.2s ease;
+  }
+  .badge svg {
+    width: 1rem;
+    height: 1rem;
+    fill: currentColor;
+    translate: 1px 0;
+  }
+  /* The badge tucks away while the video plays */
+  .is-playing .badge {
+    opacity: 0;
+    scale: 0.8;
+  }
+
+  figcaption {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 0.1rem 0.5rem;
+    padding: 0.65rem 0.2rem 0;
+  }
+  .title {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .category {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--moss);
+  }
+  .caption {
+    grid-column: 1 / -1;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    figure,
+    .badge {
+      transition: none;
+    }
+  }
+</style>
