@@ -725,14 +725,6 @@ const birds = [
 </script>
 
 <style>
-  /* Big screens: the Works page spreads out instead of sitting in a narrow strip. --fs is 1rem up to
-     80rem (1280px) wide, then grows with the window up to 1.4rem; the page width grows with it, and
-     everything in the scene below is sized in em so it scales too. */
-  :global(body) {
-    --fs: clamp(1rem, (100vw - 16rem) / 64, 1.4rem);
-    --max-width: clamp(64rem, 100vw - 16rem, 89.6rem);
-  }
-
   /* Name on the left; roles over on the right, right-aligned */
   .hello {
     display: grid;
@@ -1199,9 +1191,9 @@ const birds = [
   /* Spot, villager and sign sit a little up from the bottom, leaving room for the name underneath */
   .stage {
     --ground: calc(6% + 1.1em);
-    /* The villager's unit: 1rem on laptops, growing faster than the text on big screens so the
-       villager fills the meadow */
-    --vs: calc(2.2em - 1.2rem);
+    /* The villager's unit: grows faster than the rest of the page on big screens (see the html
+       font-size in global.css), so the villager fills the meadow */
+    --vs: calc(2.2rem - 19.2px); /* 1rem at normal size, growing faster than rem on big screens */
   }
   .spot {
     position: absolute;

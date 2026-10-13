@@ -2,6 +2,7 @@
 // The shell every page shares: <head>, the nav, a <main> slot for page content, and the footer.
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import PawTrail from '../components/PawTrail.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -26,5 +27,6 @@ const { title, description = 'Software engineer and artist. Projects, art, and a
       <slot />
     </main>
     <Footer />
+    <PawTrail />
   </body>
 </html>

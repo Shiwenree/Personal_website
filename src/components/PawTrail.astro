@@ -1,0 +1,75 @@
+---
+// Little paw prints that follow the mouse and fade away, stepping left, right, left like a walking
+// villager. Only for a real mouse (not touch), and off when the visitor prefers reduced motion.
+---
+
+<script>
+  const STEP = 38; // px the mouse moves between prints
+  const MAX = 14; // prints on screen at once
+
+  if (matchMedia('(pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    let last: { x: number; y: number } | null = null;
+    let side = 1;
+
+    addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      if (!last) {
+        last = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < STEP) return;
+
+      // Step off to one side of the path, toes pointing the way the mouse went
+      side = -side;
+      const nx = -dy / dist;
+      const ny = dx / dist;
+      const paw = document.createElement('span');
+      paw.className = 'paw-print';
+      paw.style.left = `${e.clientX + nx * 7 * side}px`;
+      paw.style.top = `${e.clientY + ny * 7 * side + 14}px`;
+      paw.style.rotate = `${Math.atan2(dy, dx) + Math.PI / 2}rad`;
+      paw.addEventListener('animationend', () => paw.remove());
+      document.body.append(paw);
+
+      const prints = document.querySelectorAll('.paw-print');
+      if (prints.length > MAX) prints[0].remove();
+      last = { x: e.clientX, y: e.clientY };
+    });
+  }
+</script>
+
+<style is:global>
+  .paw-print {
+    position: fixed;
+    z-index: 60;
+    width: 18px;
+    height: 18px;
+    margin: -9px 0 0 -9px;
+    pointer-events: none;
+    background: #7a5c47; /* soft brown, like muddy paws */
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='5.2' ry='4.4'/%3E%3Ccircle cx='5.8' cy='10.2' r='2.3'/%3E%3Ccircle cx='9.8' cy='6.4' r='2.4'/%3E%3Ccircle cx='14.2' cy='6.4' r='2.4'/%3E%3Ccircle cx='18.2' cy='10.2' r='2.3'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='5.2' ry='4.4'/%3E%3Ccircle cx='5.8' cy='10.2' r='2.3'/%3E%3Ccircle cx='9.8' cy='6.4' r='2.4'/%3E%3Ccircle cx='14.2' cy='6.4' r='2.4'/%3E%3Ccircle cx='18.2' cy='10.2' r='2.3'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    animation: paw-print 0.75s ease-out forwards;
+  }
+  @keyframes paw-print {
+    from {
+      opacity: 0;
+      scale: 0.5;
+    }
+    15% {
+      opacity: 0.7;
+      scale: 1;
+    }
+    40% {
+      opacity: 0.55;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+</style>

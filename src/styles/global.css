@@ -19,7 +19,15 @@
   --shadow: 0 1px 2px rgb(46 38 34 / 0.06), 0 8px 24px -12px rgb(46 38 34 / 0.18);
   --gutter: 1.25rem;
   --max-width: 64rem;
+  --fs: 1rem; /* the Works scene's base size (it's sized in em off this) */
   color-scheme: light;
+}
+
+/* Big screens: the whole site grows with the window instead of sitting in a narrow strip. Everything
+   is sized in rem, so raising the root size scales the text, the page width and the art together:
+   normal size up to 80rem (1280px) wide, then growing to 1.4x at about 1900px. */
+html {
+  font-size: clamp(100%, (100vw - 16rem) / 64, 140%);
 }
 
 *,
