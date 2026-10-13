@@ -19,7 +19,7 @@
   --shadow: 0 1px 2px rgb(46 38 34 / 0.06), 0 8px 24px -12px rgb(46 38 34 / 0.18);
   --gutter: 1.25rem;
   --max-width: 64rem;
-  --edge: clamp(var(--gutter), 3vw, 3.5rem); /* how far the top bar, footer and greeting sit from the window's sides */
+  --edge: clamp(var(--gutter), 3vw, 3.5rem); /* how far the top bar, page content and footer sit from the window's sides */
   --fs: 1rem; /* the Works scene's base size (it's sized in em off this) */
   color-scheme: light;
 }
@@ -65,12 +65,11 @@ a {
   text-underline-offset: 0.2em;
 }
 
+/* Page content spans the window, lined up with the top bar and footer */
 main {
   flex: 1;
   width: 100%;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 2.5rem var(--gutter) 4rem;
+  padding: 2.5rem var(--edge) 4rem;
 }
 
 img {

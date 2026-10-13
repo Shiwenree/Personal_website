@@ -725,10 +725,8 @@ const birds = [
 </script>
 
 <style>
-  /* Name on the left; roles over on the right, right-aligned. It reaches past the page's centered
-     column to line up with the top bar, which spans the whole window */
+  /* Name on the left; roles over on the right, right-aligned */
   .hello {
-    margin-inline: min(0px, calc(50% - 50vw + var(--edge)));
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: end;
@@ -788,15 +786,17 @@ const birds = [
   .field {
     /* --painting: the painting's height when it spans the window (it's 2360 x 1640).
        --land: how far down the lake ends on phones, where the painting sits at the top (see the bottom of this file).
+       --shown: how much of it shows; the top of the sky is cropped off so there's less empty space.
        --content-top: where the projects start. The content sits at the bottom of the painting, so the
        villager always stands in the meadow; 37.5rem is about the height of the project list. */
     --painting: calc(100vw * 1640 / 2360);
+    --shown: calc(var(--painting) * 0.8);
     --land: max(17rem, 40vw);
-    --content-top: max(calc(var(--land) * 0.45), calc(var(--painting) - var(--fs) * 37.5));
+    --content-top: max(calc(var(--land) * 0.45), calc(var(--shown) - var(--fs) * 37.5));
     position: relative;
     isolation: isolate; /* keeps the backdrop's z-index:-1 inside this section */
-    /* Tall enough to show the whole painting */
-    min-height: var(--painting);
+    /* Tall enough to show the painting, minus the top of the sky */
+    min-height: var(--shown);
     /* Break out of the page's centered column to span the whole window */
     width: 100vw;
     margin-inline: calc(50% - 50vw);
@@ -934,20 +934,19 @@ const birds = [
     }
   }
 
-  /* Content sits in the page's normal centered column, down on the meadow */
+  /* Content spans the window like the rest of the page, down on the meadow: the projects along the
+     left edge, the villager in all the room to their right */
   .field-inner {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 30em) minmax(0, 1fr);
     gap: 2.5rem;
-    max-width: var(--max-width);
-    margin-inline: auto;
-    padding: var(--content-top) var(--gutter) 3.5rem;
+    padding: var(--content-top) var(--edge) 3.5rem;
     font-size: var(--fs);
   }
-  /* While a project is open, the tabs sit along the page's left edge; on narrower screens push the
-     content over so the text box doesn't end up underneath them */
+  /* While a project is open, the tabs sit along the page's left edge, so push the content over to
+     make room for them */
   .is-open .field-inner {
-    padding-left: max(var(--gutter), calc(var(--fs) * 9 - max(0px, (100vw - var(--max-width)) / 2)));
+    padding-left: calc(var(--fs) * 9);
   }
 
   /* ---------- Project buttons (left) ---------- */
@@ -1201,7 +1200,7 @@ const birds = [
     position: absolute;
     left: 50%;
     bottom: var(--ground);
-    width: min(75%, var(--vs) * 20);
+    width: min(80%, var(--vs) * 24);
     translate: -50% 0;
     overflow: visible;
   }
@@ -1231,10 +1230,10 @@ const birds = [
   .character {
     position: absolute;
     left: 50%;
-    bottom: calc(var(--ground) + var(--vs) * 2.4);
+    bottom: calc(var(--ground) + var(--vs) * 2.9);
     /* Sized to one frame of the villager's sprite sheet (set by the script), feet at the bottom edge.
        Scaled by frame width so every villager is drawn at the same scale. */
-    width: calc(min(60%, var(--vs) * 15) * var(--fw, 440) / 440);
+    width: calc(min(64%, var(--vs) * 18) * var(--fw, 440) / 440);
     aspect-ratio: var(--fw, 440) / var(--fh, 498);
     translate: -50% 0;
   }
@@ -1304,8 +1303,8 @@ const birds = [
     text-align: center;
     color: #3d5a6b;
   }
-  /* Narrow screens: the villager is centered, so the cloud sits right above it */
-  @media (max-width: 48em) {
+  /* Narrower screens: no room off to the side, so the cloud sits right above the villager */
+  @media (max-width: 70em) {
     .thought {
       width: 13.5em;
       left: 50%;
@@ -1342,8 +1341,8 @@ const birds = [
   .nameplate {
     position: absolute;
     left: 50%;
-    bottom: calc(var(--ground) - var(--vs) * 3.4);
-    width: min(75%, var(--vs) * 20); /* same width as the spot, so the curve follows it */
+    bottom: calc(var(--ground) - var(--vs) * 4.1);
+    width: min(80%, var(--vs) * 24); /* same width as the spot, so the curve follows it */
     translate: -50% 0;
     overflow: visible;
     pointer-events: none;
@@ -1374,8 +1373,8 @@ const birds = [
 
   .sign {
     position: absolute;
-    /* Just past the right edge of the villager's spot (the spot is min(75%, 20 villager units) wide, centered) */
-    left: calc(50% + min(31%, var(--vs) * 8.25));
+    /* Just past the right edge of the villager's spot (the spot is min(80%, 24 villager units) wide, centered) */
+    left: calc(50% + min(33%, var(--vs) * 9.9));
     bottom: calc(var(--ground) + 8%);
     display: flex;
     flex-direction: column;
