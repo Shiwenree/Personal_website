@@ -41,9 +41,9 @@ export const villagers: Record<string, Villager> = {
   sammy: {
     name: 'Sammy',
     facts: [
+      'I have a Samoyed named Milky! He is 3 years old.',
+      'Sammy sifts through every commit like he’s sifting for bones!',
       'Samoyeds’ upturned smiles keep them from drooling, so no icicles form on their lips!',
-      'Sammy sifts through every commit like he’s digging for a buried bone.',
-      'One good brushing of Sammy makes enough fluff to knit a scarf.',
     ],
     // Frames: 0-2 smile (small, bigger, biggest), 3-5 wave (paw by cheek, up, out), 6 wink (unused), 7-8 hearts (low, high)
     works: {
@@ -112,7 +112,6 @@ export const villagers: Record<string, Villager> = {
     facts: [
       'Rubber duck debugging is real: explain your code to a duck and the bug often shows itself.',
       'Debuggy reads every packaging label, twice.',
-      'Ducks’ feathers are so waterproof that water rolls right off. So does bad data.',
     ],
     // Frames: 0 stationary, 1-2 sprout sways one way then the other, 3-5 flower blooms (click), 6-7 flapping (hover)
     works: {
@@ -150,8 +149,7 @@ export const villagers: Record<string, Villager> = {
     name: 'Python',
     facts: [
       'The Python language is named after Monty Python, not the snake!',
-      'Python can price a bed faster than it can shed its skin.',
-      'Snakes smell with their tongues, and Python can smell a thin profit margin.',
+      'Python is my most commonly used language, along with C++.',
     ],
     // Frames: 0 stationary, 1 smile, 2 small fangs, 3 big fangs, 4 happy squint (hover), 5 unimpressed (click)
     works: {
@@ -185,8 +183,7 @@ export const villagers: Record<string, Villager> = {
   owl: {
     name: 'Night Owl',
     facts: [
-      'Owls can turn their heads about 270 degrees, perfect for reading every RFP requirement.',
-      'Night Owl reads the documentation… then tests it anyway.',
+      'My sleep schedule makes me almost nocturnal!',
       'A group of owls is called a parliament.',
     ],
     // Frames: 0 stationary, 1 eyes half closed, 2 eyes closed, 3 nervous (hover), 4 grumpy (click)
@@ -220,7 +217,7 @@ export const villagers: Record<string, Villager> = {
     name: 'GoldiLucks',
     facts: [
       'Goldfish memory is a myth: they can remember things for months.',
-      'GoldiLucks never forgets a recruiter’s name.',
+      'Goldfish are lucky in Chinese culture, hence GoldiLucks!',
       'Goldfish can learn to recognize the person who feeds them.',
     ],
     // Frames: 0 stationary, 1 mouth closed, 2 mouth "o", 3-4 bubbles rising (hover), 5-7 dozing with Z's (click)

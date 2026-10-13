@@ -11,3 +11,7 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Local-only source material (original photos, project notes); not part of the site
+Art_Gallery/
+Projects/

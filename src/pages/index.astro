@@ -198,7 +198,6 @@ const birds = [
           </li>
         ))}
       </ul>
-      <p class="tagline">Software engineer, artist, and caretaker of a small village of animal friends.</p>
     </div>
   </header>
 
@@ -726,7 +725,7 @@ const birds = [
 </script>
 
 <style>
-  /* Name on the left; roles and tagline right beside it, left-aligned behind a dashed divider */
+  /* Name on the left; roles over on the right, right-aligned */
   .hello {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -743,8 +742,8 @@ const birds = [
     color: var(--muted);
   }
   .about-me {
-    padding-left: 2rem;
-    border-left: 2px dashed var(--line);
+    justify-self: end;
+    text-align: right;
   }
   .roles {
     margin: 0;
@@ -761,13 +760,6 @@ const birds = [
     margin-left: 0.3rem;
     font-size: 0.9em;
   }
-  .tagline {
-    margin: 0.35rem 0 0;
-    font-family: var(--font-display);
-    font-variation-settings: 'SOFT' 100;
-    font-style: italic;
-    color: var(--muted);
-  }
   /* Phones: everything stacks, and "Pick a project" moves to the end, right above the meadow */
   @media (max-width: 40rem) {
     .hello {
@@ -781,8 +773,8 @@ const birds = [
     }
     .about-me {
       order: 1;
-      padding-left: 0;
-      border-left: 0;
+      justify-self: auto;
+      text-align: left;
     }
     .intro {
       order: 2;
