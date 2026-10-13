@@ -725,8 +725,10 @@ const birds = [
 </script>
 
 <style>
-  /* Name on the left; roles over on the right, right-aligned */
+  /* Name on the left; roles over on the right, right-aligned. It reaches past the page's centered
+     column to line up with the top bar, which spans the whole window */
   .hello {
+    margin-inline: min(0px, calc(50% - 50vw + var(--edge)));
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: end;
