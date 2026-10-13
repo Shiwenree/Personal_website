@@ -1,6 +1,7 @@
 // Everything on the Art page, in the order it appears.
 // Images live in src/assets/art (Astro resizes them for each screen). Photos are prepared with
-// characters/tools/art-photos.py (turns them upright, shrinks them, strips GPS location),
+// characters/tools/art-photos.py, or the same steps with sharp (turn upright, shrink to 2000px, strip
+// metadata including GPS location),
 // ink drawings with characters/tools/clean-line-art.py (white paper, black lines).
 // Videos live in public/art as .mp4 plus a .jpg poster frame shown before they play.
 // `caption` is optional.
@@ -8,6 +9,10 @@ import type { ImageMetadata } from 'astro';
 import foodJournal from '../assets/art/food-journal-ink.jpg';
 import fanDance from '../assets/art/fan-dance.jpg';
 import birdhouses from '../assets/art/birdhouses.jpg';
+import gorge from '../assets/art/gorge.jpg';
+import stringLights from '../assets/art/string-lights.jpg';
+import gardenRooftops from '../assets/art/garden-rooftops.jpg';
+import redHibiscus from '../assets/art/red-hibiscus.jpg';
 import blueCeiling from '../assets/art/blue-ceiling.jpg';
 import chicagoRiver from '../assets/art/chicago-river.jpg';
 import cityNight from '../assets/art/city-night.jpg';
@@ -55,6 +60,7 @@ export const art: ArtPiece[] = [
     alt: 'Ink sketchbook page of labeled food doodles: steamed egg, soondubu, lamb and mantou, blueberries, gelato, a latte, and more.',
   },
   photo('Pavilion', pavilion, 'Two people sitting in a painted wooden pavilion, a lotus pond and a traditional hall beyond.'),
+  photo('String lights', stringLights, 'A brick-walled patio at dusk under rows of glowing string lights, two people talking on a bench.'),
   photo('Birdhouses', birdhouses, 'A tall pole stacked with colorful painted birdhouses against the sky.'),
   photo('Lighthouse', lighthouse, 'A white lighthouse at the top of wooden stairs through beach grass.'),
   {
@@ -65,9 +71,12 @@ export const art: ArtPiece[] = [
     image: fanDance,
     alt: 'Two dancers on stage against a green backdrop, each holding a blue and white silk fan.',
   },
+  photo('Garden rooftops', gardenRooftops, 'Dark tiled roofs with sharply upswept eaves over a pavilion, reflected in a still garden pond.'),
   photo('City lights', cityNight, 'A city skyline at night with red-lit towers above glowing traditional rooftops by a river.'),
   photo('Quiet street', quietStreet, 'A narrow paved street between old wooden houses, flowers along the side, hills behind.'),
+  photo('Gorge', gorge, 'Hikers on a path at the bottom of a narrow gorge, green cliffs rising on both sides toward a pale sky.'),
   photo('Red lattice', redLattice, 'Looking up at a building wrapped in a dense red wooden lattice.'),
   photo('Rocky shore', rockyShore, 'Dark rocky cliffs meeting white surf under a partly cloudy sky.'),
+  photo('Red hibiscus', redHibiscus, 'A single frilly red hibiscus flower hanging on a long stem over a blurred greenhouse path.'),
   photo('Blue ceiling', blueCeiling, 'A glowing blue glass ceiling framed by tall white columns.'),
 ];

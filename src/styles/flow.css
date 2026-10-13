@@ -1,0 +1,417 @@
+/* Pipeline diagrams on project pages (redrawn from the project's FigJam board in the site's colors).
+   Markup lives in the project's markdown as a <figure class="flow">. Each stage card takes its color
+   from --c; buckets are colored chips. */
+.flow {
+  --ink: #4a3f38;
+  --c-input: #e6cf8f;
+  --c-filter: #a9c4d6;
+  --c-sort: #d4b3d1;
+  --c-score: #e6cf8f;
+  --c-result: #e9b49a;
+  --c-check: #9fd0cf;
+  margin: 2rem 0 2.5rem;
+  padding: 1.5rem;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.flow-steps,
+.flow-ladder,
+.flow-branch {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow-steps {
+  display: grid;
+  gap: 1.6rem;
+}
+.flow .flow-step {
+  position: relative;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border: 2px solid var(--c);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--c) 22%, var(--surface));
+  line-height: 1.45;
+}
+/* Ink arrow from each stage down to the next */
+.flow-steps > li {
+  position: relative;
+}
+.flow-steps > li:not(:last-child)::after,
+.flow-pair > .flow-step:first-child::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 0.25rem);
+  width: 0.65rem;
+  height: 1.1rem;
+  translate: -50% 0;
+  background: var(--ink);
+  clip-path: polygon(40% 0, 60% 0, 60% 62%, 100% 62%, 50% 100%, 0 62%, 40% 62%);
+}
+/* After a pair, the arrow down leaves from the second card (center of the right column) */
+.flow-steps > li.flow-pair:not(:last-child)::after {
+  left: calc(75% + 0.4rem);
+}
+/* Two stages side by side, with an arrow pointing across */
+.flow-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6rem;
+}
+.flow-pair > .flow-step:first-child::after {
+  left: calc(100% + 0.25rem);
+  top: 50%;
+  width: 1.1rem;
+  height: 0.65rem;
+  translate: 0 -50%;
+  clip-path: polygon(0 40%, 62% 40%, 62% 0, 100% 50%, 62% 100%, 62% 60%, 0 60%);
+}
+.flow-kicker {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--moss);
+}
+.flow-name {
+  display: block;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.flow-note {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Sub-steps of a stage (pre-filter checks), side by side */
+.flow-branch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.flow .flow-branch li,
+.flow .flow-ladder li {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.7rem;
+  background: var(--surface);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.flow-branch b,
+.flow-ladder b {
+  color: var(--text);
+}
+
+/* The commit organizer: checks in order, each with the buckets it can assign */
+.flow-ladder {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  counter-reset: none;
+}
+.flow .flow-ladder li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 1rem;
+}
+.flow-ladder li > span:first-child {
+  min-width: 0;
+}
+.flow-buckets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+.flow-buckets::before {
+  content: '→';
+  color: var(--ink);
+  font-weight: 700;
+  margin-right: 0.1rem;
+}
+.bucket {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--b, var(--line));
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--text);
+}
+.bucket.meaningful { --b: #b9d39a; }
+.bucket.lint { --b: #e6dccb; }
+.bucket.wip { --b: #f1df9f; }
+.bucket.testing { --b: #c4dbe8; }
+.bucket.docs { --b: #e2cde0; }
+.bucket.addressed { --b: #f1c9b6; }
+.bucket.none {
+  background: transparent;
+  outline: 1.5px dashed var(--muted);
+  outline-offset: -1.5px;
+  color: var(--muted);
+}
+.flow-formula {
+  display: block;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.6rem;
+  background: var(--surface);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.flow-step.is-check {
+  border-style: dashed;
+}
+.flow figcaption {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* A check with many possible buckets puts them on their own line */
+.flow .flow-ladder li.is-wide {
+  grid-template-columns: 1fr;
+}
+.flow .flow-ladder li.is-wide .flow-buckets {
+  justify-content: flex-start;
+}
+
+/* Phones: bucket chips drop under each check */
+@media (max-width: 36rem) {
+  .flow {
+    padding: 1rem;
+  }
+  .flow .flow-ladder li {
+    grid-template-columns: 1fr;
+  }
+  .flow-pair {
+    grid-template-columns: 1fr;
+  }
+  .flow-steps > li.flow-pair:not(:last-child)::after {
+    left: 50%;
+  }
+  .flow-pair > .flow-step:first-child::after {
+    left: 50%;
+    top: calc(100% + 0.25rem);
+    width: 0.65rem;
+    height: 1.1rem;
+    translate: -50% 0;
+    clip-path: polygon(40% 0, 60% 0, 60% 62%, 100% 62%, 50% 100%, 0 62%, 40% 62%);
+  }
+  .flow-buckets {
+    justify-content: flex-start;
+  }
+}
+
+/* ---------- Other diagram styles, so each project page doesn't look the same ----------
+   All sit inside a <figure class="flow"> for the dashed frame and caption. */
+
+/* Tier chart: groups of bars whose height is the value (--p), relative to the group's max (--max) */
+.tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1.5rem 2rem;
+}
+.tier-title {
+  display: block;
+  margin-bottom: 0.6rem;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  color: var(--text);
+}
+.tier-bars,
+.tier-labels {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0 0.4rem;
+}
+.tier-bars {
+  align-items: flex-end;
+  height: 8rem;
+  border-bottom: 2px solid var(--ink);
+}
+.tier-bar {
+  flex: 1;
+  height: calc(var(--p) / var(--max, 15) * 100%);
+  padding-top: 0.35rem;
+  border-radius: 0.6rem 0.6rem 0 0;
+  background: var(--b, var(--line));
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text);
+}
+.tier-bar.is-off {
+  height: 28%;
+  background: transparent;
+  outline: 1.5px dashed var(--muted);
+  outline-offset: -1.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.tier-labels span {
+  flex: 1;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--muted);
+}
+.flow-aside {
+  margin: 1.25rem 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Bar chart: one row per item, a bar per measure, width = --v relative to --max */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.chart-legend li::before {
+  content: '';
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.1rem;
+  border-radius: 0.25rem;
+  background: var(--b);
+}
+.bars {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow .bars > li {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+.bar-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.bar-pair {
+  display: grid;
+  gap: 0.3rem;
+}
+.bar {
+  width: calc(var(--v) / var(--max, 52) * 100%);
+  min-width: 3.2rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--b);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: right;
+  color: var(--text);
+}
+
+/* Tiles: a grid of equal cards (deliverables), each with a big number */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow .tiles > li {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border: 2px solid var(--c);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--c) 22%, var(--surface));
+  line-height: 1.45;
+}
+.tile-num {
+  float: right;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--c) 70%, var(--ink));
+}
+
+/* Track: a horizontal timeline of dots joined by a line */
+.track {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.track::before {
+  content: '';
+  position: absolute;
+  /* From the first dot to the last: each dot sits in the middle of its 1/n share (--n = number of stops) */
+  left: calc(50% / var(--n, 5));
+  right: calc(50% / var(--n, 5));
+  top: 0.45rem;
+  border-top: 2px dashed var(--ink);
+  opacity: 0.5;
+}
+.flow .track > li {
+  position: relative;
+  flex: 1;
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--muted);
+}
+.track > li::before {
+  content: '';
+  display: block;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0 auto 0.4rem;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--c, var(--surface));
+}
+.track b {
+  display: block;
+  color: var(--text);
+}
+
+@media (max-width: 36rem) {
+  .flow .bars > li {
+    grid-template-columns: 1fr;
+  }
+  .tiles {
+    grid-template-columns: 1fr;
+  }
+}

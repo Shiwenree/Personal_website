@@ -1,0 +1,317 @@
+---
+// Layout for a full project page (src/pages/works/*.md). The page's markdown fills the slot;
+// the header comes from its frontmatter.
+import { statSync } from 'node:fs';
+import BaseLayout from './BaseLayout.astro';
+import WebPet from '../components/WebPet.astro';
+import { villagers } from '../data/villagers';
+import '../styles/flow.css';
+
+interface Props {
+  frontmatter: {
+    title: string;
+    subtitle?: string;
+    tag?: string;
+    villager?: string;
+    facts?: { label: string; value: string }[];
+    description?: string;
+    color?: string;
+    tags?: string[];
+    links?: { label: string; href: string }[];
+  };
+}
+
+const { title, subtitle, tag, villager, facts = [], description, color = 'var(--line)', tags = [], links = [] } =
+  Astro.props.frontmatter;
+
+// The project's villager (same face as its button on the Works page)
+const friend = villager ? villagers[villager] : undefined;
+const faceFile = villager && `/villagers/${villager}-face.webp`;
+const face = faceFile && `${faceFile}?v=${Math.round(statSync(`public${faceFile}`).mtimeMs)}`;
+---
+
+<BaseLayout title={`${title} · Reewin Shi`} description={description ?? subtitle}>
+  <article class="project" style={`--work: ${color}`}>
+    <a class="back" href="/">← All projects</a>
+    <header>
+      <div class="heading">
+        {face && <img class="face" src={face} alt={`${friend?.name ?? villager}, this project's villager`} width="80" height="80" />}
+        <div>
+          {tag && <p class="eyebrow">{tag}</p>}
+          <h1>{title}</h1>
+          {subtitle && <p class="subtitle">{subtitle}</p>}
+        </div>
+      </div>
+      {facts.length > 0 && (
+        <dl class="facts">
+          {facts.map((f) => (
+            <div>
+              <dt>{f.label}</dt>
+              <dd>{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {tags.length > 0 && (
+        <ul class="chips">
+          {tags.map((t) => <li class="chip">{t}</li>)}
+        </ul>
+      )}
+      {links.length > 0 && (
+        <div class="links">
+          {links.map((l) => (
+            <a class="button" href={l.href} target="_blank" rel="noopener">{l.label} ↗</a>
+          ))}
+        </div>
+      )}
+    </header>
+    <div class="body">
+      <slot />
+    </div>
+    <footer class="project-end">
+      <a class="back" href="/">← All projects</a>
+      {links.map((l) => (
+        <a class="end-link" href={l.href} target="_blank" rel="noopener">{l.label} ↗</a>
+      ))}
+    </footer>
+  </article>
+  {villager && <WebPet villager={villager} />}
+</BaseLayout>
+
+<style>
+  .project {
+    max-width: 44rem;
+    margin: 0 auto;
+  }
+  .back {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--moss);
+    text-decoration: none;
+  }
+  .back:hover {
+    color: var(--text);
+  }
+  header {
+    margin: 1rem 0 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 4px solid var(--work);
+  }
+  .heading {
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+  }
+  .face {
+    flex: none;
+    width: 5rem;
+    height: 5rem;
+    border-radius: 1rem;
+    background: var(--work);
+    object-fit: cover;
+    rotate: -3deg;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem 1.5rem;
+    margin: 0 0 1.25rem;
+    padding: 0.8rem 1.1rem;
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--work) 22%, var(--surface));
+  }
+  .facts dt {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--moss);
+  }
+  .facts dd {
+    margin: 0;
+    font-weight: 600;
+  }
+  .project-end {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 4px solid var(--work);
+  }
+  .end-link {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--accent-ink);
+    text-decoration: none;
+  }
+  .end-link:hover {
+    color: var(--text);
+  }
+  .eyebrow {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--moss);
+  }
+  h1 {
+    margin: 0.2rem 0 0.4rem;
+    font-size: clamp(1.75rem, 4.2vw, 2.15rem);
+  }
+  .subtitle {
+    margin: 0;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.3rem;
+    font-style: italic;
+    color: var(--muted);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+  .chip {
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--line);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .button {
+    display: inline-block;
+    padding: 0.5rem 1.1rem;
+    border-radius: 999px;
+    border: 2px solid var(--accent);
+    color: var(--accent-ink);
+    font-weight: 700;
+    text-decoration: none;
+    transition: translate 0.15s ease;
+  }
+  .button:hover {
+    translate: 0 -2px;
+  }
+
+  /* The page's markdown */
+  .body :global(h2) {
+    margin: 2.5rem 0 0.75rem;
+    font-size: 1.6rem;
+  }
+  .body :global(p),
+  .body :global(li) {
+    color: var(--text);
+  }
+  /* Plain markdown lists only (diagrams style their own) */
+  .body :global(:is(ol, ul):not([class]) > li) {
+    margin-bottom: 0.6rem;
+  }
+  .body :global(:is(ol, ul):not([class])) {
+    padding-left: 1.4rem;
+  }
+  .body :global(h3) {
+    margin: 1.75rem 0 0.5rem;
+    font-size: 1.25rem;
+  }
+  /* Screenshots and mockups: side by side, framed like the cards */
+  .body :global(.shots) {
+    margin: 1.5rem 0 2rem;
+  }
+  .body :global(.shots-row) {
+    display: grid;
+    gap: 1rem;
+  }
+  .body :global(.shots video),
+  .body :global(.shots img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 2px solid var(--work);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow);
+  }
+  /* Numbered steps, each a short looping clip with a label */
+  .body :global(.shot-step) {
+    margin: 0;
+  }
+  .body :global(.shot-step > span) {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-weight: 600;
+  }
+  .body :global(.shot-step > span b) {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    margin-right: 0.4rem;
+    border-radius: 50%;
+    background: var(--work);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+  }
+  .body :global(.shots figcaption) {
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    text-align: center;
+    color: var(--muted);
+  }
+  .body :global(table) {
+    width: 100%;
+    margin: 1rem 0 1.25rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+    border: 2px solid var(--work);
+    border-radius: 1rem;
+    font-size: 0.92rem;
+  }
+  .body :global(th),
+  .body :global(td) {
+    padding: 0.5rem 0.8rem;
+    text-align: left;
+  }
+  .body :global(th) {
+    background: color-mix(in srgb, var(--work) 35%, var(--surface));
+    font-weight: 700;
+  }
+  .body :global(tr:nth-child(even) td) {
+    background: color-mix(in srgb, var(--work) 12%, var(--surface));
+  }
+  /* Wide tables scroll sideways on phones instead of squeezing */
+  @media (max-width: 36rem) {
+    .body :global(table) {
+      display: block;
+      overflow-x: auto;
+    }
+  }
+  .body :global(code:not([class])) {
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.3rem;
+    background: var(--line);
+    font-size: 0.9em;
+  }
+
+  @media (max-width: 36rem) {
+    .face {
+      width: 4rem;
+      height: 4rem;
+    }
+  }
+</style>

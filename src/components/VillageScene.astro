@@ -1,6 +1,6 @@
 ---
 // The village, drawn from above at an angle (3/4 view): forest all around an open grassy
-// clearing. All original shapes built from code.
+// clearing, styled after the Works painting. All shapes built from code.
 // Two layers: `back` is everything villagers walk in front of; `front` is the row of trees along the
 // bottom edge that villagers walk behind.
 import { MAP, FOREST_EDGE } from '../data/village-map';
@@ -22,85 +22,72 @@ const rand = seeded(23);
 const between = (a: number, b: number) => a + rand() * (b - a);
 const n = (v: number) => v.toFixed(1);
 
-const INK = '#4e6a8a'; // soft navy outline, same family as the Works page drawings
+// Colors sampled from the Works painting (Backgrounds/Works_background.png), so the village matches it
+const INK = '#4a703a'; // the painting's dark green outline
+// [fill, lighter top-left highlight]
+const TREE = [
+  ['#97b667', '#adc982'],
+  ['#94b276', '#a9c48e'],
+  ['#a2c593', '#b8d6ab'],
+  ['#8aab5c', '#a1c075'],
+];
+const MUSTARD = ['#e7d58a', '#f0e3a8']; // the occasional yellow tree
 
 // ---------- Trees ----------
-// Round trees: a puff of overlapping circles. Outline trick: draw the circles a bit bigger in the ink
-// color first, then the fills on top, so only the outer edge of the whole puff shows a line.
-const ROUND = [
-  ['#6fa25a', '#8fc06c', '#b2d88b'],
-  ['#7cad5e', '#a3cd78', '#c3e199'],
-  ['#8fb35a', '#b5d276', '#d3e79c'],
-  ['#5f9a58', '#7fb466', '#a5cf86'],
-  ['#d3a548', '#e9c467', '#f5dc8e'], // a few autumn trees
-];
-const PINE = [
-  ['#4b845b', '#64a070'],
-  ['#55906a', '#71ad7c'],
-  ['#3f7a55', '#5a9668'],
-];
-
-function roundTree(x: number, y: number, s: number, c: string[]) {
-  const r = 34 * s;
-  const cy = y - 26 * s - r * 0.75;
-  const puffs: [number, number, number][] = [
-    [x, cy, r],
-    [x - r * 0.62, cy + r * 0.28, r * 0.72],
-    [x + r * 0.62, cy + r * 0.28, r * 0.72],
-    [x - r * 0.25, cy - r * 0.5, r * 0.68],
-    [x + r * 0.3, cy - r * 0.42, r * 0.62],
-  ];
-  const circles = (dx: number, dy: number, grow: number, fill: string, scale = 1) =>
-    puffs.map(([px, py, pr]) => `<circle cx="${n(px + dx)}" cy="${n(py + dy)}" r="${n(pr * scale + grow)}" fill="${fill}"/>`).join('');
-  return (
-    `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(r * 1.05)}" ry="${n(r * 0.32)}" fill="#7fa865" opacity="0.45"/>` +
-    `<rect x="${n(x - 5 * s)}" y="${n(y - 30 * s)}" width="${n(10 * s)}" height="${n(30 * s)}" rx="${n(3 * s)}" fill="#8a6a4a" stroke="${INK}" stroke-width="2"/>` +
-    circles(0, 0, 2.6, INK) +
-    circles(0, 0, 0, c[0]) +
-    circles(-r * 0.1, -r * 0.12, 0, c[1], 0.82) +
-    `<circle cx="${n(x - r * 0.35)}" cy="${n(cy - r * 0.45)}" r="${n(r * 0.22)}" fill="${c[2]}"/>` +
-    `<circle cx="${n(x + r * 0.15)}" cy="${n(cy - r * 0.6)}" r="${n(r * 0.13)}" fill="${c[2]}"/>`
-  );
+// Like the painting: no trunks, just soft shapes with a lumpy (scalloped) outline: a row of outward
+// bumps from the bottom-left corner up over the top and down to the bottom-right corner, then a flat
+// base along the ground. Two kinds: tall rounded columns, and wide low bushes.
+function lumpy(x: number, y: number, w: number, h: number, bumps: number) {
+  const cx = x, cy = y - h / 2, rx = w / 2, ry = h / 2;
+  const base = y - 2;
+  // Corners of the flat base, then points around the sides and top (angles go clockwise on screen)
+  const from = Math.PI - 0.55, to = 2 * Math.PI + 0.55;
+  const gaps = Array.from({ length: bumps }, () => between(0.75, 1.3));
+  const total = gaps.reduce((a, b) => a + b, 0);
+  const pts: [number, number][] = [[cx - rx * 0.86, base]];
+  let a = from;
+  for (const g of gaps.slice(0, -1)) {
+    a += (g / total) * (to - from);
+    pts.push([cx + rx * Math.cos(a), Math.min(cy + ry * Math.sin(a), base)]);
+  }
+  pts.push([cx + rx * 0.86, base]);
+  let d = `M ${n(pts[0][0])} ${n(pts[0][1])}`;
+  for (let i = 1; i < pts.length; i++) {
+    const [px, py] = pts[i - 1], [qx, qy] = pts[i];
+    const r = (Math.hypot(qx - px, qy - py) / 2) * between(1.02, 1.2);
+    d += ` A ${n(r)} ${n(r)} 0 0 1 ${n(qx)} ${n(qy)}`;
+  }
+  return d + ' Z'; // straight line back along the ground
 }
 
-function pineTree(x: number, y: number, s: number, c: string[]) {
-  const tiers = 3;
-  const h = 46 * s;
-  let outline = '';
-  let fill = '';
-  for (let i = 0; i < tiers; i++) {
-    const w = (40 - i * 9) * s;
-    const base = y - 18 * s - i * h * 0.55;
-    const top = base - h;
-    const d = `M ${n(x - w)} ${n(base)} Q ${n(x)} ${n(base + 10 * s)} ${n(x + w)} ${n(base)} L ${n(x + 3 * s)} ${n(top)} Q ${n(x)} ${n(top - 4 * s)} ${n(x - 3 * s)} ${n(top)} Z`;
-    outline += `<path d="${d}" fill="${INK}" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>`;
-    fill += `<path d="${d}" fill="${c[0]}"/>`;
-    // lighter left side, like light coming from the top left
-    fill += `<path d="M ${n(x - w * 0.9)} ${n(base - 1)} Q ${n(x - w * 0.3)} ${n(base + 4 * s)} ${n(x)} ${n(base + 2 * s)} L ${n(x)} ${n(top + 4 * s)} Z" fill="${c[1]}"/>`;
-  }
+function tree(x: number, y: number, s: number, tall: boolean, c: string[]) {
+  const w = (tall ? between(44, 58) : between(70, 92)) * s;
+  const h = (tall ? between(92, 128) : between(44, 60)) * s;
+  const bumps = tall ? 13 + Math.floor(rand() * 4) : 10 + Math.floor(rand() * 3);
+  const shape = lumpy(x, y, w, h, bumps);
+  // A softer, lighter patch toward the top left, like light falling on it
+  const hl = lumpy(x - w * 0.12, y - h * 0.22, w * 0.62, h * 0.6, bumps - 3);
   return (
-    `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(30 * s)}" ry="${n(10 * s)}" fill="#6f9a5a" opacity="0.45"/>` +
-    `<rect x="${n(x - 4.5 * s)}" y="${n(y - 22 * s)}" width="${n(9 * s)}" height="${n(22 * s)}" rx="2" fill="#7d5e42" stroke="${INK}" stroke-width="2"/>` +
-    outline +
-    fill
+    `<ellipse cx="${n(x + 4)}" cy="${n(y)}" rx="${n(w * 0.58)}" ry="${n(8 * s)}" fill="#86a65a" opacity="0.35"/>` +
+    `<path d="${shape}" fill="${c[0]}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>` +
+    `<path d="${hl}" fill="${c[1]}" opacity="0.5"/>`
   );
 }
 
 // Scatter trees on a jittered grid, keeping only the spots outside the clearing
 type Item = { x: number; y: number; svg: string };
 const trees: Item[] = [];
-for (let gy = -30; gy <= MAP.height + 70; gy += 62) {
-  for (let gx = -40; gx <= MAP.width + 40; gx += 68) {
-    const x = gx + between(-22, 22) + (Math.round(gy / 62) % 2) * 34;
-    const y = gy + between(-18, 18);
+for (let gy = -10; gy <= MAP.height + 90; gy += 58) {
+  for (let gx = -40; gx <= MAP.width + 40; gx += 62) {
+    const x = gx + between(-20, 20) + (Math.round(gy / 58) % 2) * 31;
+    const y = gy + between(-16, 16);
     const dx = (x - FOREST_EDGE.cx) / FOREST_EDGE.rx;
     const dy = (y - FOREST_EDGE.cy) / FOREST_EDGE.ry;
     const d = dx * dx + dy * dy;
     if (d < 1 + rand() * 0.12) continue;
-    const s = between(0.85, 1.25);
-    const pine = rand() < 0.38;
-    const svg = pine ? pineTree(x, y, s * 1.05, PINE[Math.floor(rand() * PINE.length)]) : roundTree(x, y, s, ROUND[rand() < 0.1 ? 4 : Math.floor(rand() * 4)]);
-    trees.push({ x, y, svg });
+    const tall = rand() < 0.58;
+    const color = rand() < 0.12 ? MUSTARD : TREE[Math.floor(rand() * TREE.length)];
+    trees.push({ x, y, svg: tree(x, y, between(0.9, 1.2), tall, color) });
   }
 }
 trees.sort((a, b) => a.y - b.y);
@@ -109,40 +96,145 @@ const FRONT_FROM = 800;
 const backTrees = trees.filter((t) => t.y <= FRONT_FROM);
 const frontTrees = trees.filter((t) => t.y > FRONT_FROM).map((t) => t.svg).join('');
 
-// ---------- Ground details ----------
-const flowers = Array.from({ length: 48 }, () => {
+// A random spot in the clearing (r = 0 center, 1 the forest edge)
+const inClearing = (maxR: number) => {
   const a = rand() * Math.PI * 2;
-  const r = Math.sqrt(rand()) * 0.9;
-  return {
-    x: FOREST_EDGE.cx + Math.cos(a) * r * 640,
-    y: FOREST_EDGE.cy + Math.sin(a) * r * 370,
-    color: ['#fffdf5', '#f6c1cf', '#f7e08a', '#c9d8f5'][Math.floor(rand() * 4)],
-  };
-});
-const flowerSvg = flowers
-  .map((f) =>
-    [0, 1, 2]
-      .map((i) => {
-        const fx = f.x + Math.cos(i * 2.1) * 9;
-        const fy = f.y + Math.sin(i * 2.1) * 5;
-        return `<circle cx="${n(fx)}" cy="${n(fy)}" r="3.4" fill="${f.color}"/><circle cx="${n(fx)}" cy="${n(fy)}" r="1.3" fill="#e9b949"/>`;
-      })
-      .join(''),
-  )
-  .join('');
+  const r = Math.sqrt(rand()) * maxR;
+  return { x: FOREST_EDGE.cx + Math.cos(a) * r * FOREST_EDGE.rx, y: FOREST_EDGE.cy + Math.sin(a) * r * FOREST_EDGE.ry };
+};
 
+// ---------- Grass ----------
+// Soft blurry blade strokes, like the brushy grass in the painting (a light scattering)
+const strokes = Array.from({ length: 70 }, () => {
+  const { x, y } = inClearing(0.98);
+  const len = between(12, 34);
+  return `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(len)}" ry="${n(between(1.6, 3))}" transform="rotate(${n(between(-110, -70))} ${n(x)} ${n(y)})" fill="${rand() < 0.7 ? '#9fbd68' : '#dbe9ac'}"/>`;
+}).join('');
+
+// Tufts, like the painting's: a few long, tapered blades that curve and lean the same way. Most are
+// soft and blurry (painted), a few get a crisp dark ink blade or two on top. Sparse, and a bit thicker
+// along the forest edge.
+function blade(x: number, y: number, len: number, lean: number, wid: number) {
+  // A thin curved leaf: up from the base, bending toward `lean`, tapering to a point
+  const tx = x + lean * len, ty = y - len;
+  const mx = x + lean * len * 0.25, my = y - len * 0.6;
+  return `M ${n(x - wid)} ${n(y)} Q ${n(mx - wid * 0.6)} ${n(my)} ${n(tx)} ${n(ty)} Q ${n(mx + wid * 0.6)} ${n(my)} ${n(x + wid)} ${n(y)} Z`;
+}
+function tuft(x: number, y: number, s: number, ink: boolean) {
+  const lean = between(-0.5, 0.5);
+  const blades = 3 + Math.floor(rand() * 3);
+  let soft = '', crisp = '';
+  for (let i = 0; i < blades; i++) {
+    const off = (i - (blades - 1) / 2) * 3.5 * s;
+    const len = between(16, 30) * s * (Math.abs(off) > 4 ? 0.75 : 1);
+    soft += blade(x + off, y, len, lean + off * 0.03 + between(-0.15, 0.15), 2.6 * s);
+  }
+  if (ink) {
+    for (let i = 0; i < 1 + Math.floor(rand() * 2); i++)
+      crisp += blade(x + between(-4, 4) * s, y, between(18, 30) * s, lean + between(-0.2, 0.2), 1.1 * s);
+  }
+  return { soft: `<path d="${soft}"/>`, crisp: crisp && `<path d="${crisp}"/>` };
+}
+const tuftList = [
+  ...Array.from({ length: 22 }, () => inClearing(0.88)),
+  ...Array.from({ length: 26 }, () => {
+    const a = rand() * Math.PI * 2;
+    const r = between(0.92, 1.0);
+    return { x: FOREST_EDGE.cx + Math.cos(a) * r * FOREST_EDGE.rx, y: FOREST_EDGE.cy + Math.sin(a) * r * FOREST_EDGE.ry };
+  }),
+].map(({ x, y }) => tuft(x, y, between(0.9, 1.4), rand() < 0.35));
+const tufts =
+  // Only every other tuft gets the soft painted blades (the rest are just the crisp ink ones, or nothing)
+  `<g filter="url(#brush)" fill="#7f9f52" opacity="0.55">${tuftList.filter((_, i) => i % 2 === 0).map((t) => t.soft).join('')}</g>` +
+  `<g fill="#4a703a" opacity="0.85">${tuftList.map((t) => t.crisp).join('')}</g>`;
+
+// ---------- Flowers ----------
+// Speckled patches of tiny dots (the painting's wildflower drifts)...
+// Each patch mixes two colors, like the painting's pink-and-peach and yellow-and-peach drifts
+const SPECKLE = [
+  ['#f4b8d6', '#fbd3e6'],
+  ['#f3d530', '#f6b49a'],
+  ['#ffffff', '#fffbe0'],
+  ['#f6b49a', '#f4b8d6'],
+  ['#f3d530', '#ffe680'],
+  ['#e3c0f0', '#f4b8d6'],
+];
+const speckles = Array.from({ length: 18 }, () => {
+  const { x, y } = inClearing(0.88);
+  const colors = SPECKLE[Math.floor(rand() * SPECKLE.length)];
+  const rx = between(34, 80), ry = rx * between(0.35, 0.55);
+  return Array.from({ length: Math.round(rx * 3.2) }, () => {
+    const a = rand() * Math.PI * 2, r = Math.pow(rand(), 0.7); // denser toward the middle
+    const color = colors[rand() < 0.75 ? 0 : 1];
+    return `<circle cx="${n(x + Math.cos(a) * r * rx)}" cy="${n(y + Math.sin(a) * r * ry)}" r="${n(between(1.5, 2.8))}" fill="${color}"/>`;
+  }).join('');
+}).join('');
+
+// ...and a few of the painting's cute single flowers: a round blue one with a smile, a big white
+// one, and a little pink cup
+function bloom(kind: number, x: number, y: number) {
+  return `<g transform="translate(${n(x)} ${n(y)}) scale(1.7) translate(${n(-x)} ${n(-y)})">${bloomShape(kind, x, y)}</g>`;
+}
+function bloomShape(kind: number, x: number, y: number) {
+  const stem = `<path d="M ${n(x)} ${n(y)} q -1 -6 0 -12" stroke="#5d8545" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+  if (kind === 0)
+    return (
+      stem +
+      `<circle cx="${n(x)}" cy="${n(y - 17)}" r="7" fill="#b5daf2" stroke="#4f86ad" stroke-width="1.4"/>` +
+      `<path d="M ${n(x - 2.6)} ${n(y - 17)} q 2.6 2.4 5.2 0" stroke="#4f86ad" stroke-width="1.2" fill="none" stroke-linecap="round"/>`
+    );
+  // Leaf: a pointed oval with a dark outline, tilted out from the base
+  const leaf = (lx: number, ly: number, ang: number, len: number) =>
+    `<ellipse cx="${n(lx)}" cy="${n(ly)}" rx="${n(len * 0.22)}" ry="${n(len / 2)}" transform="rotate(${n(ang)} ${n(lx)} ${n(ly)})" fill="#6f9b4c" stroke="#3f6a2e" stroke-width="0.8"/>`;
+  if (kind === 1) {
+    // Big white flower, as in the painting: one soft lumpy blob (lobes merged into a single outline),
+    // a golden outline, a little yellow dash in the middle, and two long leaves
+    const cx = x, cy = y - 22, lobes = 5;
+    let d = '';
+    for (let i = 0; i <= lobes; i++) {
+      const a = (i / lobes) * Math.PI * 2 - Math.PI / 2 + 0.3;
+      const px = cx + Math.cos(a) * 7.6 * (i % 2 ? 1.08 : 0.94), py = cy + Math.sin(a) * 6.6;
+      d += i === 0 ? `M ${n(px)} ${n(py)}` : ` A ${i % 2 ? 5.6 : 5} ${i % 2 ? 5.6 : 5} 0 0 1 ${n(px)} ${n(py)}`;
+    }
+    return (
+      `<path d="M ${n(x)} ${n(y)} q -1 -7 0 -14" stroke="#3f6a2e" stroke-width="1" fill="none" stroke-linecap="round"/>` +
+      leaf(x - 4.5, y - 6, -30, 13) +
+      leaf(x + 5, y - 7, 30, 15) +
+      `<path d="${d} Z" fill="#fbfcf0" stroke="#d9b464" stroke-width="0.9" stroke-linejoin="round"/>` +
+      `<ellipse cx="${n(cx)}" cy="${n(cy + 0.8)}" rx="2.6" ry="0.9" fill="#e2bf45"/>`
+    );
+  }
+  // Little pink flower, as in the painting: a round puff with a purple outline and a short dash
+  // across the middle, sitting on two small leaves (no stem)
+  return (
+    leaf(x - 2.4, y - 4, -12, 8) +
+    leaf(x + 3, y - 4, 28, 8) +
+    `<path d="M ${n(x - 6)} ${n(y - 11)} q 0 -5 6 -5.2 q 6.4 0.2 6 5 q -0.6 3.8 -6 3.8 q -6 0 -6 -3.6 z" fill="#f2c2ec" stroke="#8e5a9c" stroke-width="1"/>` +
+    `<path d="M ${n(x - 2)} ${n(y - 12)} h 4" stroke="#8e5a9c" stroke-width="1" stroke-linecap="round"/>`
+  );
+}
+const blooms = Array.from({ length: 9 }, (_, i) => {
+  const { x, y } = inClearing(0.85);
+  return bloom(i % 3, x, y);
+}).join('');
 
 // Trees are drawn top of the map first, so lower ones overlap them
 const standing = backTrees.map((t) => t.svg).join('');
 
 const scene = `
-  <defs><filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="40"/></filter></defs>
-  <rect width="${MAP.width}" height="${MAP.height}" fill="#a9cf86"/>
+  <defs>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="40"/></filter>
+    <filter id="brush" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
+  </defs>
+  <rect width="${MAP.width}" height="${MAP.height}" fill="#b5ce7d"/>
   <g filter="url(#soft)">
-    <ellipse cx="${FOREST_EDGE.cx}" cy="${FOREST_EDGE.cy + 15}" rx="${FOREST_EDGE.rx * 0.95}" ry="${FOREST_EDGE.ry * 0.92}" fill="#bfdd99"/>
-    <ellipse cx="${FOREST_EDGE.cx - 120}" cy="${FOREST_EDGE.cy - 20}" rx="360" ry="190" fill="#cae5a6"/>
+    <ellipse cx="${FOREST_EDGE.cx}" cy="${FOREST_EDGE.cy + 15}" rx="${FOREST_EDGE.rx * 0.95}" ry="${FOREST_EDGE.ry * 0.92}" fill="#c6db92"/>
+    <ellipse cx="${FOREST_EDGE.cx - 120}" cy="${FOREST_EDGE.cy - 20}" rx="380" ry="200" fill="#d4e39f"/>
   </g>
-  ${flowerSvg}
+  <g filter="url(#brush)" opacity="0.45">${strokes}</g>
+  ${speckles}
+  ${tufts}
+  ${blooms}
   ${standing}
 `;
 ---

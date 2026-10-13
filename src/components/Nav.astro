@@ -8,9 +8,9 @@ const tabs = [
 ];
 
 const path = Astro.url.pathname.replace(/\/$/, '') || '/';
-// Works is the home page, and project pages (/projects/...) count as Works too.
+// Works is the home page, and project pages (/works/...) count as Works too.
 const isActive = (href: string) =>
-  href === '/' ? path === '/' || path.startsWith('/projects') : path.startsWith(href);
+  href === '/' ? path === '/' || path.startsWith('/works') : path.startsWith(href);
 ---
 
 <header>

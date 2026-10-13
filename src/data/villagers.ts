@@ -7,6 +7,8 @@ export type Step = [number, number];
 
 export interface Villager {
   name: string;
+  // Fun facts that float up in a thought cloud above the villager on the Works page (keep them short)
+  facts?: string[];
   // Works page: front-facing, stands on the project's spot
   works: {
     sheet: string;
@@ -38,6 +40,11 @@ export interface Villager {
 export const villagers: Record<string, Villager> = {
   sammy: {
     name: 'Sammy',
+    facts: [
+      'Samoyeds’ upturned smiles keep them from drooling, so no icicles form on their lips!',
+      'Sammy sifts through every commit like he’s digging for a buried bone.',
+      'One good brushing of Sammy makes enough fluff to knit a scarf.',
+    ],
     // Frames: 0-2 smile (small, bigger, biggest), 3-5 wave (paw by cheek, up, out), 6 wink (unused), 7-8 hearts (low, high)
     works: {
       sheet: '/villagers/sammy.webp',
@@ -69,6 +76,11 @@ export const villagers: Record<string, Villager> = {
 
   foxy: {
     name: 'Blossom',
+    facts: [
+      'Foxes may use Earth’s magnetic field to line up their pounces.',
+      'Blossom remembers the name of every neighbor in Detroit.',
+      'A fox’s tail is called a brush, and Blossom keeps hers very tidy.',
+    ],
     // Frames: 0 stationary, 1 eyes half closed, 2 eyes closed, 3 fangs (click), 4 tongue out, 5 tongue a little out
     works: {
       sheet: '/villagers/foxy.webp',
@@ -97,6 +109,11 @@ export const villagers: Record<string, Villager> = {
 
   duck: {
     name: 'Rubber Debuggy',
+    facts: [
+      'Rubber duck debugging is real: explain your code to a duck and the bug often shows itself.',
+      'Debuggy reads every packaging label, twice.',
+      'Ducks’ feathers are so waterproof that water rolls right off. So does bad data.',
+    ],
     // Frames: 0 stationary, 1-2 sprout sways one way then the other, 3-5 flower blooms (click), 6-7 flapping (hover)
     works: {
       sheet: '/villagers/duck.webp',
@@ -131,6 +148,11 @@ export const villagers: Record<string, Villager> = {
 
   python: {
     name: 'Python',
+    facts: [
+      'The Python language is named after Monty Python, not the snake!',
+      'Python can price a bed faster than it can shed its skin.',
+      'Snakes smell with their tongues, and Python can smell a thin profit margin.',
+    ],
     // Frames: 0 stationary, 1 smile, 2 small fangs, 3 big fangs, 4 happy squint (hover), 5 unimpressed (click)
     works: {
       sheet: '/villagers/python.webp',
@@ -162,6 +184,11 @@ export const villagers: Record<string, Villager> = {
 
   owl: {
     name: 'Night Owl',
+    facts: [
+      'Owls can turn their heads about 270 degrees, perfect for reading every RFP requirement.',
+      'Night Owl reads the documentation… then tests it anyway.',
+      'A group of owls is called a parliament.',
+    ],
     // Frames: 0 stationary, 1 eyes half closed, 2 eyes closed, 3 nervous (hover), 4 grumpy (click)
     works: {
       sheet: '/villagers/owl.webp',
@@ -191,6 +218,11 @@ export const villagers: Record<string, Villager> = {
 
   fish: {
     name: 'GoldiLucks',
+    facts: [
+      'Goldfish memory is a myth: they can remember things for months.',
+      'GoldiLucks never forgets a recruiter’s name.',
+      'Goldfish can learn to recognize the person who feeds them.',
+    ],
     // Frames: 0 stationary, 1 mouth closed, 2 mouth "o", 3-4 bubbles rising (hover), 5-7 dozing with Z's (click)
     works: {
       sheet: '/villagers/fish.webp',

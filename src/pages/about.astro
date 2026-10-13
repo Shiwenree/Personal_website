@@ -3,6 +3,7 @@ import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import portrait from '../assets/portrait.jpg';
 import OrgCarousel from '../components/OrgCarousel.astro';
+import { roles } from '../data/roles';
 
 ---
 
@@ -23,6 +24,15 @@ import OrgCarousel from '../components/OrgCarousel.astro';
       <p class="eyebrow">Hi, I'm</p>
       <h1>Reewin Shi</h1>
       <p class="lede">Software engineer, artist, and caretaker of a small village of animal friends.</p>
+
+      <ul class="roles">
+        {roles.map((r) => (
+          <li>
+            {r.role} @ <strong>{r.org}</strong>
+            {r.when && <span class="when">· {r.when}</span>}
+          </li>
+        ))}
+      </ul>
 
       <p>
         I'm a Computer Science student at the University of Michigan with a minor in Business. This past
@@ -85,6 +95,22 @@ import OrgCarousel from '../components/OrgCarousel.astro';
     font-size: 1.3rem;
     color: var(--muted);
     margin-top: 0;
+  }
+
+  .roles {
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .roles strong {
+    font-style: italic;
+    color: var(--text);
+  }
+  .roles .when {
+    margin-left: 0.3rem;
+    font-size: 0.9em;
   }
 
   .actions {
