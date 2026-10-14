@@ -3,6 +3,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import VillageScene from '../components/VillageScene.astro';
 import { villagers } from '../data/villagers';
 import { MAP, BUILDINGS, placed } from '../data/village-map';
+import { cloud, puffInk } from '../data/thought-cloud';
+import '@fontsource/baloo-2/800.css'; // the thought cloud's lettering, same as on the Works page
 import { statSync } from 'node:fs';
 
 // Sprite sheets get "?v=<when the file last changed>" so browsers fetch redrawn ones instead of old saved copies
@@ -15,9 +17,17 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
 
 <BaseLayout title="Village">
   <h1>Village</h1>
-  <p class="intro">The village is still being built. Wander around, or click anywhere in the clearing to call a villager over.</p>
+  <p class="intro">The village is still being built. Wander around, click anywhere in the clearing to call a villager over, or tap a villager to say hi.</p>
 
   <!-- On narrow screens the map keeps its size and scrolls sideways instead of shrinking to nothing -->
+  <!-- The thought clouds' shading: white on top, melting into pale sky blue at the bottom -->
+  <svg width="0" height="0" aria-hidden="true" style="position: absolute">
+    <linearGradient id="cloud-shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.55" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#eaf2f8" />
+    </linearGradient>
+  </svg>
+
   <div class="scroller">
     <div class="map" data-map style={`aspect-ratio: ${MAP.width} / ${MAP.height}`}>
       <VillageScene layer="back" />
@@ -47,6 +57,19 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         >
           <span class="shadow"></span>
           <span class="sprite" style={`background-image: url(${versioned(v.sheet)})`}></span>
+          <!-- Thought cloud, shown for a few seconds when the villager is tapped -->
+          <div class="thought" data-thought aria-hidden="true">
+            <svg class="thought-cloud" viewBox="0 0 240 124">
+              <path class="cloud-fill" d={cloud.fill} />
+              {cloud.puffs.map(({ d, low }, i) => {
+                const ink = puffInk(low, i);
+                return <path class="cloud-ink" d={d} pathLength="100" stroke-dasharray={`0 ${ink[0]} ${ink[1]} 100`} />;
+              })}
+            </svg>
+            <svg class="thought-puff big" viewBox="0 0 20 16"><ellipse cx="10" cy="8" rx="8.5" ry="6.5" pathLength="100" stroke-dasharray="0 12 82 100" /></svg>
+            <svg class="thought-puff small" viewBox="0 0 20 16"><ellipse cx="10" cy="8" rx="8" ry="6" pathLength="100" stroke-dasharray="0 60 84 100" /></svg>
+            <p class="thought-text" data-thought-text></p>
+          </div>
         </div>
       ))}
 
@@ -66,6 +89,19 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   const SPEED = 70; // default walking speed, map units per second (a villager can set its own)
   const STEP_MS = 170; // default time per walk frame
   const MARGIN = 26; // how close a villager's feet may get to an obstacle
+  const GREET_MS = 3200; // how long the thought cloud stays up after tapping a villager
+
+  // What a villager thinks when you tap it (one at random, never the same twice in a row)
+  const greetings = (name: string) => [
+    'Hi there!',
+    'Oh! Hello!',
+    `Hi, I'm ${name}!`,
+    'Welcome to the village!',
+    'Hello, friend!',
+    'Lovely day for a walk.',
+    'Have you tried the bakery?',
+    'Nice to see you!',
+  ];
 
   type Point = { x: number; y: number };
 
@@ -107,8 +143,14 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     let scale = map.clientWidth / MAP.width; // pixels per map unit
 
     const walkers = [...map.querySelectorAll<HTMLElement>('[data-walker]')].map((el, index) => {
-      const v = villagers[el.dataset.walker!].village;
+      const { name, village: v } = villagers[el.dataset.walker!];
       const sprite = el.querySelector<HTMLElement>('.sprite')!;
+      const thought = el.querySelector<HTMLElement>('[data-thought]')!;
+      const thoughtText = thought.querySelector<HTMLElement>('[data-thought-text]')!;
+      const lines = greetings(name);
+      let lastLine = -1;
+      let greeting = false;
+      let greetTimer = 0;
       const show = (frame: number) => {
         sprite.style.backgroundPositionX = `${(frame / (v.frames - 1)) * 100}%`;
       };
@@ -125,7 +167,8 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         const depth = (y - (WALKABLE.cy - WALKABLE.ry)) / (WALKABLE.ry * 2);
         el.style.translate = `${x * scale}px ${y * scale}px`;
         el.style.scale = String(0.9 + depth * 0.1);
-        el.style.zIndex = String(Math.round(y));
+        // While thinking, its cloud goes over everything, even the trees along the bottom
+        el.style.zIndex = greeting ? '6000' : String(Math.round(y));
       };
 
       // Pick somewhere to wander: a mix of straight across, straight up/down, and diagonal trips
@@ -174,6 +217,36 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       place();
       return {
         distanceTo: (p: Point) => Math.hypot(p.x - x, p.y - y),
+        // Is this screen point on the villager? Returns how far down the map it stands (so the one in
+        // front wins when two overlap), or -1 if not.
+        hit(cx: number, cy: number) {
+          const r = sprite.getBoundingClientRect();
+          return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom ? y : -1;
+        },
+        // Tapped: stop, face you, and think a greeting for a few seconds
+        greet() {
+          path = [];
+          clearTimeout(idleTimer);
+          sprite.style.rotate = '';
+          show(v.rest);
+          restUntil = performance.now() + GREET_MS + 600;
+          let i = Math.floor(Math.random() * lines.length);
+          if (i === lastLine) i = (i + 1) % lines.length;
+          lastLine = i;
+          thoughtText.textContent = lines[i];
+          greeting = true;
+          thought.classList.add('is-showing');
+          place();
+          clearTimeout(greetTimer);
+          greetTimer = window.setTimeout(() => {
+            thought.classList.remove('is-showing');
+            // Let the fade finish before it drops back into the crowd
+            greetTimer = window.setTimeout(() => {
+              greeting = false;
+              place();
+            }, 700);
+          }, GREET_MS);
+        },
         goTo(p: Point) {
           const r = route({ x, y }, p);
           if (!r) return false;
@@ -217,8 +290,14 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       };
     });
 
-    // Click (or tap) the clearing and the closest villager that can get there walks over
+    // Tap a villager and it says hi. Click (or tap) anywhere else in the clearing and the closest
+    // villager that can get there walks over.
     map.addEventListener('click', (e) => {
+      const tapped = walkers.map((w) => ({ w, depth: w.hit(e.clientX, e.clientY) })).filter((t) => t.depth >= 0);
+      if (tapped.length) {
+        tapped.sort((a, b) => b.depth - a.depth)[0].w.greet();
+        return;
+      }
       if (reduceMotion.matches) return;
       const box = map.getBoundingClientRect();
       const p = { x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale };
@@ -272,6 +351,79 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     position: absolute;
     pointer-events: none; /* clicks go through to the map, to call a villager over */
     user-select: none;
+  }
+
+  /* ---------- Thought cloud ---------- */
+  /* Floats up and to the right of the villager's head, with two small puffs trailing down to it
+     (the same cloud as on the Works page) */
+  .thought {
+    position: absolute;
+    left: -8%;
+    bottom: 190%; /* the walker box hangs below the feet, so this is just under the top of the sprite */
+    width: 9.5em;
+    aspect-ratio: 240 / 124;
+    font-size: clamp(0.7rem, 0.55rem + 0.4vw, 1rem);
+    opacity: 0;
+    translate: 0 0.5em;
+    transition: opacity 0.6s ease, translate 0.6s ease;
+    pointer-events: none;
+  }
+  .thought.is-showing {
+    opacity: 1;
+    translate: 0 0;
+  }
+  .thought-cloud {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+  .cloud-fill {
+    fill: url(#cloud-shade);
+  }
+  .cloud-ink,
+  .thought-puff ellipse {
+    fill: none;
+    stroke: #5c91ac;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+  .thought-puff {
+    position: absolute;
+    overflow: visible;
+  }
+  .thought-puff ellipse {
+    fill: #fff;
+  }
+  .thought-puff.big {
+    left: 8%;
+    bottom: -9%;
+    width: 1em;
+    height: 0.8em;
+  }
+  .thought-puff.small {
+    left: 1%;
+    bottom: -24%;
+    width: 0.6em;
+    height: 0.5em;
+  }
+  .thought-text {
+    position: absolute;
+    inset: 18% 12% 16%;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    font-family: 'Baloo 2', var(--font-body);
+    font-size: 0.95em;
+    font-weight: 800;
+    line-height: 1.1;
+    text-align: center;
+    color: #3d5a6b;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .thought,
+    .thought.is-showing {
+      translate: none;
+    }
   }
 
   /* The walker's top-left corner sits at the villager's feet; the sprite hangs up and to the left from there */

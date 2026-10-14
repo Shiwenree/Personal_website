@@ -33,7 +33,9 @@ export interface Building {
   flat?: boolean; // lies on the ground (the garden): villagers are always drawn on top of it
   door: Pt; // picture px: where its path starts
   path?: Pt[]; // map: the rest of its path after the door; the last point is where it joins another path
-  blocks: Box; // picture px: the area villagers can't walk through
+  // picture px: the area villagers can't walk through. For standing buildings this also reaches up over
+  // the whole picture, so villagers never walk behind a building and disappear.
+  blocks: Box;
 }
 
 export const BUILDINGS: Building[] = [
@@ -54,18 +56,22 @@ export const BUILDINGS: Building[] = [
     door: [205, 405], path: [[930, 858], [770, 808]], blocks: [20, 270, 380, 350] },
 ];
 
+const SIDE_ROOM = 14;
+
 // A building's picture, door, ground line and blocked area in map units
 export const placed = (b: Building) => {
   const w = b.size[0] * b.scale, h = b.size[1] * b.scale;
   const left = b.x - w / 2, top = b.bottom - h;
   const at = ([px, py]: Pt): Pt => [left + px * b.scale, top + py * b.scale];
-  const [l, t] = at([b.blocks[0], b.blocks[1]]);
-  const [r, bt] = at([b.blocks[2], b.blocks[3]]);
+  const [l, t] = at(b.flat ? [b.blocks[0], b.blocks[1]] : [Math.min(b.blocks[0], 0), 0]);
+  const [r, bt] = at(b.flat ? [b.blocks[2], b.blocks[3]] : [Math.max(b.blocks[2], b.size[0]), b.blocks[3]]);
   return {
     left, top, w, h,
     ground: top + (b.base ?? b.size[1]) * b.scale,
     door: at(b.door),
-    blocks: [l, t, r, bt] as Box,
+    // Standing buildings get a little extra room at the sides too, so a villager standing right beside
+    // one isn't half tucked behind its edge
+    blocks: (b.flat ? [l, t, r, bt] : [l - SIDE_ROOM, t, r + SIDE_ROOM, bt]) as Box,
   };
 };
 
