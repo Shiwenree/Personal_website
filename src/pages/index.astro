@@ -128,27 +128,37 @@ const first = works[0].villager ? villagers[works[0].villager] : undefined;
 
 // Everything else, shown as a simple grid under the meadow (no project pages for these yet).
 // Add an `href` to make a card a link (e.g. to GitHub or a live demo), and a `status` (like
-// "In progress") to show a little badge above the title.
-const moreProjects: { title: string; status?: string; blurb: string; tags: string[]; href?: string }[] = [
+// "In progress") to show a little badge above the title. Each card has an animal face (public/villagers/more/,
+// colored from the sketches in the "Meet the villagers" video) on a colored square; projects still in
+// progress get a grayed-out villager with a question mark.
+const moreProjects: { title: string; status?: string; blurb: string; tags: string[]; href?: string; face: string; color: string }[] = [
   {
     title: 'This Website',
+    face: 'otter-face',
+    color: '#b9c99a',
     blurb: 'A hand-painted village built in Astro: a living WebGL painting, sprite-animated villagers, and a pet that walks the page.',
     tags: ['Astro', 'TypeScript', 'WebGL', 'Illustration'],
   },
   {
     title: 'Medical Startup Homepage',
+    face: 'deer-face',
+    color: '#a9c4d6',
     blurb: 'A homepage for a medical startup, chosen over 25 competing developers and deployed to 200+ users.',
     tags: ['React', 'JavaScript', 'Tailwind CSS'],
   },
   {
     title: 'Photo Booth Strip',
     status: 'In progress',
+    face: 'mystery-giraffe',
+    color: '#e6cf8f',
     blurb: 'Snap a few photos and get them back as a classic photo booth strip.',
     tags: ['TBD'],
   },
   {
     title: 'Math Homework Notes',
     status: 'In progress',
+    face: 'mystery-cat',
+    color: '#d4b3d1',
     blurb: 'A notes app built for working through math homework.',
     tags: ['TBD'],
   },
@@ -352,8 +362,13 @@ const birds = [
         return (
           <li>
             <Tag class="card" href={p.href} target={p.href ? '_blank' : undefined} rel={p.href ? 'noopener' : undefined}>
-              {p.status && <span class="card-status">{p.status}</span>}
-              <span class="card-title">{p.title}</span>
+              <span class="card-head">
+                <img class="card-face" src={`/villagers/more/${p.face}.webp`} alt="" style={`background-color: ${p.color}`} />
+                <span class="card-name">
+                  {p.status && <span class="card-status">{p.status}</span>}
+                  <span class="card-title">{p.title}</span>
+                </span>
+              </span>
               <span class="card-blurb">{p.blurb}</span>
               <span class="card-tags">
                 {p.tags.map((t) => <span class="chip">{t}</span>)}
@@ -1450,6 +1465,25 @@ const birds = [
   a.card:focus-visible {
     translate: 0 -3px;
   }
+  /* Face on the left, title (and any "In progress" badge) beside it */
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.2rem;
+  }
+  .card-face {
+    flex: none;
+    width: 3.25rem;
+    aspect-ratio: 1;
+    border-radius: 0.3rem;
+  }
+  .card-name {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+  }
   .card-title {
     font-family: var(--font-display);
     font-variation-settings: 'SOFT' 100;
@@ -1457,8 +1491,6 @@ const birds = [
     font-weight: 600;
   }
   .card-status {
-    align-self: flex-start;
-    margin-bottom: -0.1rem;
     padding: 0.05rem 0.5rem;
     border: 1.5px dashed var(--moss);
     border-radius: 999px;
