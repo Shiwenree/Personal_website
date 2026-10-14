@@ -1,9 +1,10 @@
 ---
 // The village, drawn from above at an angle (3/4 view): forest all around an open grassy
-// clearing, styled after the Works painting. All shapes built from code.
+// clearing with paths between the buildings, styled after the Works painting. All shapes built from
+// code; the buildings themselves are the hand-drawn pictures placed on top in src/pages/village.astro.
 // Two layers: `back` is everything villagers walk in front of; `front` is the row of trees along the
 // bottom edge that villagers walk behind.
-import { MAP, FOREST_EDGE } from '../data/village-map';
+import { MAP, FOREST_EDGE, PATHS } from '../data/village-map';
 
 interface Props {
   layer: 'back' | 'front';
@@ -213,9 +214,137 @@ function bloomShape(kind: number, x: number, y: number) {
     `<path d="M ${n(x - 2)} ${n(y - 12)} h 4" stroke="#8e5a9c" stroke-width="1" stroke-linecap="round"/>`
   );
 }
+// ---------- Paths ----------
+// Dirt paths: the main road up the middle, and each building's path from its door to where it joins
+// another. Drawn like the building art: a near-black ink outline that wobbles a little and breaks here
+// and there like a hand-drawn line, a warm sandy fill shaded darker along the far edge, a few outlined
+// pebbles and little ink dashes on top (like the bookshop's stepping stones and the marks on the
+// garden's soil), and grass tufts over the edges.
+type P = [number, number];
+// Catmull-Rom through the points, as cubic curves: [start, control 1, control 2, end] for each piece
+function curves(pts: P[]) {
+  return pts.slice(0, -1).map((p1, i): P[] => {
+    const p0 = pts[i - 1] ?? p1, p2 = pts[i + 1], p3 = pts[i + 2] ?? p2;
+    return [p1, [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6], p2];
+  });
+}
+const bez = ([a, b, c, d]: P[], t: number): P => {
+  const u = 1 - t;
+  return [0, 1].map((k) => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * d[k]) as P;
+};
+const INK_PATH = '#2b2622'; // the drawing's ink
+const SAND_SHADE = '#d2ad74', SAND = '#e6cb95';
+// Half the path's width at a height on the map: wider near the bottom (closer to us) and narrower
+// toward the top (further away), like the buildings' 3/4 view
+const halfWidth = (y: number) => 10.5 + 9 * Math.min(Math.max((y - 330) / 650, 0), 1);
+
+// Each path as a filled outline instead of an even-width line: walk along it, and on both sides put
+// the edge out at the path's half width, nudged in and out a little so the edges are uneven like a
+// worn dirt path. Round at both ends.
+function sampled(cs: P[][]) {
+  const pts: P[] = [];
+  for (const c of cs) {
+    const steps = Math.max(4, Math.round(Math.hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]) / 5));
+    for (let i = pts.length ? 1 : 0; i <= steps; i++) pts.push(bez(c, i / steps));
+  }
+  return pts;
+}
+function outline(pts: P[], scale: number, dy: number) {
+  // Smooth bumps along each edge (a couple of sine waves with random phases), different on each side
+  const ph = Array.from({ length: 4 }, () => rand() * Math.PI * 2);
+  const bump = (s: number, side: number) =>
+    1 + 0.13 * Math.sin(s / 26 + ph[side * 2]) + 0.08 * Math.sin(s / 9 + ph[side * 2 + 1]);
+  const left: P[] = [], right: P[] = [];
+  let s = 0;
+  pts.forEach(([x, y], i) => {
+    const [ax, ay] = pts[Math.max(i - 1, 0)], [bx, by] = pts[Math.min(i + 1, pts.length - 1)];
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = -(by - ay) / len, ny = (bx - ax) / len;
+    if (i) s += Math.hypot(x - pts[i - 1][0], y - pts[i - 1][1]);
+    const w = halfWidth(y) * scale;
+    left.push([x + nx * w * bump(s, 0), y + ny * w * bump(s, 0) + dy]);
+    right.push([x - nx * w * bump(s, 1), y - ny * w * bump(s, 1) + dy]);
+  });
+  // Round ends: half circles from one edge to the other
+  const cap = ([x, y]: P, [fx, fy]: P, from: P, steps = 7): P[] => {
+    const a0 = Math.atan2(from[1] - dy - y, from[0] - x), dir = Math.atan2(fy - y, fx - x);
+    const turn = Math.sin(dir - a0) > 0 ? -1 : 1; // go round the side away from the path
+    const r = Math.hypot(from[0] - x, from[1] - dy - y);
+    return Array.from({ length: steps }, (_, k) => {
+      const a = a0 + (turn * Math.PI * (k + 1)) / (steps + 1);
+      return [x + Math.cos(a) * r, y + Math.sin(a) * r + dy] as P;
+    });
+  };
+  const last = pts.length - 1;
+  const ring = [
+    ...left,
+    ...cap(pts[last], pts[last - 1], left[last]),
+    ...right.reverse(),
+    ...cap(pts[0], pts[1], right[right.length - 1]),
+  ];
+  return 'M ' + ring.map(([x, y]) => `${n(x)} ${n(y)}`).join(' L ') + ' Z';
+}
+const pathCurves = PATHS.map(curves);
+const pathSamples = pathCurves.map(sampled);
+const shapes = pathSamples.map((pts) => ({
+  edge: outline(pts, 1, 0),
+  // The lit part: a bit narrower and shifted toward us, so a darker band is left only along the far
+  // (upper) edge, where the grass lip shades the path a little
+  lit: outline(pts, 0.86, 4),
+}));
+// Breaks in the outline: long uneven dashes with short gaps, starting at a different spot on each path
+const gappy = () =>
+  `stroke-dasharray="${Array.from({ length: 6 }, () => `${n(between(40, 120))} ${n(between(6, 13))}`).join(' ')}" stroke-dashoffset="${n(between(0, 200))}"`;
+
+// Pebbles and dashes at spots along the paths (skipping the ends, which are under the buildings)
+const pathBits = pathSamples
+  .flatMap((pts) => Array.from({ length: Math.max(1, Math.round(pts.length / 10)) }, () => pts[Math.floor(between(0.08, 0.92) * pts.length)]))
+  .map(([px, py]) => {
+    const x = px + between(-1, 1) * halfWidth(py) * 0.5, y = py + between(-1, 1) * halfWidth(py) * 0.3;
+    if (rand() < 0.45) {
+      // A grey pebble with an ink outline and a light highlight, like the bookshop's stepping stones
+      const rx = between(3, 6) * (halfWidth(py) / 15), ry = rx * between(0.45, 0.65);
+      return (
+        `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(rx)}" ry="${n(ry)}" fill="#a3a19c" stroke="${INK_PATH}" stroke-width="1.2"/>` +
+        `<ellipse cx="${n(x - rx * 0.25)}" cy="${n(y - ry * 0.3)}" rx="${n(rx * 0.45)}" ry="${n(ry * 0.3)}" fill="#dedcd6"/>`
+      );
+    }
+    // A little ink dash, like the marks on the garden's soil
+    const w = between(3.5, 6.5);
+    return `<path d="M ${n(x - w)} ${n(y)} q ${n(w)} ${n(-between(1.5, 3))} ${n(w * 2)} 0" stroke="#7a6243" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
+  })
+  .join('');
+
+// Grass growing over the paths' edges here and there, so they sit in the ground instead of on top of it
+const edgeTufts = pathSamples
+  .flatMap((pts) =>
+    Array.from({ length: Math.round(pts.length / 22) }, () => {
+      const i = Math.floor(between(0.06, 0.94) * pts.length);
+      const [x, y] = pts[i], [ax, ay] = pts[Math.max(i - 1, 0)], [bx, by] = pts[Math.min(i + 1, pts.length - 1)];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const side = rand() < 0.5 ? 1 : -1, w = halfWidth(y) * between(0.85, 1.05);
+      return tuft(x - (side * (by - ay) / len) * w, y + (side * (bx - ax) / len) * w + 2, between(0.9, 1.25), true).crisp;
+    }),
+  )
+  .join('');
+
+const paths =
+  `<g filter="url(#wobble)">` +
+  shapes.map((p) => `<path d="${p.edge}" fill="none" stroke="${INK_PATH}" stroke-width="4.5" stroke-linejoin="round" ${gappy()}/>`).join('') +
+  shapes.map((p) => `<path d="${p.edge}" fill="${SAND_SHADE}"/>`).join('') +
+  `<g filter="url(#shade)">` +
+  shapes.map((p) => `<path d="${p.lit}" fill="${SAND}"/>`).join('') +
+  `</g></g>` +
+  pathBits +
+  `<g fill="#4a703a" opacity="0.85">${edgeTufts}</g>`;
+
+// The single flowers grow beside the paths, never on them
+const pathPoints = pathSamples.flat();
+const offPath = (x: number, y: number) => pathPoints.every(([px, py]) => Math.hypot(px - x, py - y) > halfWidth(py) + 24);
 const blooms = Array.from({ length: 9 }, (_, i) => {
-  const { x, y } = inClearing(0.85);
-  return bloom(i % 3, x, y);
+  let spot = inClearing(0.85);
+  for (let tries = 0; tries < 30 && !offPath(spot.x, spot.y); tries++) spot = inClearing(0.85);
+  return bloom(i % 3, spot.x, spot.y);
 }).join('');
 
 // Trees are drawn top of the map first, so lower ones overlap them
@@ -225,6 +354,8 @@ const scene = `
   <defs>
     <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="40"/></filter>
     <filter id="brush" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
+    <filter id="shade" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="1.4"/></filter>
+    <filter id="wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G"/></filter>
   </defs>
   <rect width="${MAP.width}" height="${MAP.height}" fill="#b5ce7d"/>
   <g filter="url(#soft)">
@@ -234,6 +365,7 @@ const scene = `
   <g filter="url(#brush)" opacity="0.45">${strokes}</g>
   ${speckles}
   ${tufts}
+  ${paths}
   ${blooms}
   ${standing}
 `;

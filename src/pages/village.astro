@@ -2,14 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import VillageScene from '../components/VillageScene.astro';
 import { villagers } from '../data/villagers';
-import { MAP } from '../data/village-map';
+import { MAP, BUILDINGS, placed } from '../data/village-map';
 import { statSync } from 'node:fs';
 
 // Sprite sheets get "?v=<when the file last changed>" so browsers fetch redrawn ones instead of old saved copies
 const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${file}`).mtimeMs)}`;
 
 // A first version of the village, before the real Phaser game exists: a drawn map (forest around a
-// clearing with paths and a few buildings) where the villagers wander and can be called over.
+// clearing with the hand-drawn buildings in it) where the villagers wander and can be called over.
+const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
 ---
 
 <BaseLayout title="Village">
@@ -20,6 +21,21 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
   <div class="scroller">
     <div class="map" data-map style={`aspect-ratio: ${MAP.width} / ${MAP.height}`}>
       <VillageScene layer="back" />
+
+      <!-- Each building is stacked by where it meets the ground, the same way the villagers are, so
+           villagers walk behind the ones further down the map and in front of the ones further up -->
+      {BUILDINGS.map((b) => {
+        const { left, top, w, h, ground } = placed(b);
+        return (
+          <img
+            class="building"
+            src={versioned(b.src)}
+            alt=""
+            decoding="async"
+            style={`left: ${pct(left, MAP.width)}; top: ${pct(top, MAP.height)}; width: ${pct(w, MAP.width)}; height: ${pct(h, MAP.height)}; z-index: ${b.flat ? 1 : Math.round(ground)}`}
+          />
+        );
+      })}
 
       {Object.entries(villagers).map(([key, { name, village: v }]) => (
         <div
@@ -44,7 +60,7 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
   import { MAP, WALKABLE, OBSTACLES, HUB } from '../data/village-map';
 
   // Each villager wanders the clearing on its own: side to side, up and down, and diagonally, resting
-  // in between, and never walking through buildings, the garden or the pond.
+  // in between, and never walking through the buildings or the garden.
   // Positions are in map units (the map is 1600 x 1000), converted to pixels when drawn.
   // Which sprite frames make up the walk and idle animations is in src/data/villagers.ts.
   const SPEED = 70; // default walking speed, map units per second (a villager can set its own)
@@ -68,7 +84,7 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
     }
     return true;
   };
-  // A route from a to b: straight if possible, otherwise via the plaza. Null if neither works.
+  // A route from a to b: straight if possible, otherwise via the middle of the clearing. Null if neither works.
   const route = (a: Point, b: Point): Point[] | null => {
     if (!canStand(b.x, b.y)) return null;
     if (clearPath(a, b)) return [b];
@@ -85,7 +101,7 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
 
   for (const map of document.querySelectorAll<HTMLElement>('[data-map]')) {
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-    // On phones the map is wider than the screen; start scrolled to the middle (the plaza)
+    // On phones the map is wider than the screen; start scrolled to the middle
     const scroller = map.parentElement!;
     scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
     let scale = map.clientWidth / MAP.width; // pixels per map unit
@@ -252,13 +268,19 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
     cursor: pointer;
   }
 
+  .building {
+    position: absolute;
+    pointer-events: none; /* clicks go through to the map, to call a villager over */
+    user-select: none;
+  }
+
   /* The walker's top-left corner sits at the villager's feet; the sprite hangs up and to the left from there */
   .walker {
     position: absolute;
     top: 0;
     left: 0;
     /* Sized as a share of the map's width, scaled by frame width so every villager is drawn at the same scale */
-    width: calc(5.6% * var(--fw) / 450);
+    width: calc(5% * var(--fw) / 450);
     aspect-ratio: var(--fw) / var(--fh);
     transform-origin: 0 0;
     pointer-events: none;
