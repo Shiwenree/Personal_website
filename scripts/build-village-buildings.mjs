@@ -268,5 +268,150 @@ async function splitSails(pic, W, H, hub, file) {
       }
     if (outer) INK.forEach((v, c) => (pic[i * 4 + c] = v));
   }
+  redrawRoof(pic, W, H, hub, hole);
   return size;
+}
+
+// The roof's outline is straight too (two slopes up to the peak), and its bottom edge, where it meets the
+// tower, a shallow curve. Smoothing over where the sails were leaves those lines broken and smudged, so
+// each is measured from the parts that still show and drawn back across the gaps at the drawing's own
+// thickness. The roof and wall either side of the bottom edge are filled in from their own colors along
+// the same row, so the red and the yellow don't blur into each other.
+function redrawRoof(pic, W, H, [hx, hy], hole) {
+  const at = (x, y) => (y * W + x) * 4;
+  const lum = (i) => 0.3 * pic[i] + 0.59 * pic[i + 1] + 0.11 * pic[i + 2];
+  const shows = (x, y) => x >= 0 && x < W && y >= 0 && y < H && !hole[y * W + x];
+  const opaque = (x, y) => pic[at(x, y) + 3] > 128;
+  const isInk = (x, y) => opaque(x, y) && lum(at(x, y)) < 75;
+  // (the roof's red, including the darker shading down its right side)
+  const isRoof = (x, y) => {
+    const i = at(x, y);
+    return opaque(x, y) && pic[i] > 140 && pic[i + 1] < 120 && lum(i) >= 75;
+  };
+  const isWall = (x, y) => {
+    const i = at(x, y);
+    return opaque(x, y) && pic[i] > 180 && pic[i + 1] > 125 && pic[i + 2] < 140;
+  };
+  // Least-squares fit of v = a + b*u (+ c*u² when `curve`)
+  const fit = (pts, curve) => {
+    const n = curve ? 3 : 2;
+    const A = Array.from({ length: n }, () => new Array(n + 1).fill(0));
+    for (const [u, v] of pts) {
+      const t = [1, u, u * u].slice(0, n);
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) A[r][c] += t[r] * t[c];
+        A[r][n] += t[r] * v;
+      }
+    }
+    for (let c = 0; c < n; c++)
+      for (let r = 0; r < n; r++) {
+        if (r === c) continue;
+        const f = A[r][c] / A[c][c];
+        for (let k = c; k <= n; k++) A[r][k] -= f * A[c][k];
+      }
+    const k = A.map((row, r) => row[n] / row[r]);
+    return (u) => k[0] + k[1] * u + (curve ? k[2] * u * u : 0);
+  };
+
+  // The peak: the highest bit of roof showing straight above the hub
+  let peak = hy;
+  for (let y = 0; y < hy && peak === hy; y++) for (let x = hx - 20; x <= hx + 20; x++) if (shows(x, y) && opaque(x, y)) (peak = y), (x = hx + 21);
+
+  // The bottom edge: in each column, the first line under the red
+  const edgePts = [];
+  for (let x = 0; x < W; x++)
+    for (let y = hy + 10; y < hy + 55; y++) {
+      if (!shows(x, y) || !isInk(x, y)) continue;
+      if (shows(x, y - 3) && isRoof(x, y - 3)) {
+        let y2 = y;
+        while (y2 + 1 < H && shows(x, y2 + 1) && isInk(x, y2 + 1)) y2++;
+        edgePts.push([x, y, y2]);
+      }
+      break;
+    }
+  // (fitted twice: the second time without the stray bits of line the first fit missed by a lot)
+  const mid = edgePts.map(([x, y, y2]) => [x, (y + y2) / 2]);
+  const rough = fit(mid, true);
+  const bottom = fit(mid.filter(([x, y]) => Math.abs(y - rough(x)) < 3), true);
+  // (a px thicker than measured, since the ends of the line that show wander a little off the fit)
+  const bottomInk = median(edgePts.map(([, y, y2]) => y2 - y + 1)) + 1;
+
+  // The slopes: the outermost drawn pixel in each row, from just under the peak to about where the
+  // corners start (rows where that pixel is next to a gap don't count)
+  const slope = (dir) => {
+    const pts = [], widths = [];
+    for (let y = peak + 6; y < peak + (hy - peak) * 1.15; y++) {
+      let x = dir < 0 ? 0 : W - 1;
+      while (x >= 0 && x < W && !opaque(x, y)) x -= dir;
+      if (x < 0 || x >= W || !shows(x, y) || !shows(x + dir, y) || !shows(x - dir * 8, y)) continue;
+      let w = 0;
+      while (isInk(x - dir * w, y)) w++;
+      pts.push([y, x]);
+      widths.push(w);
+    }
+    const line = fit(pts, false);
+    const cos = 1 / Math.hypot(1, line(1) - line(0));
+    return { line, ink: median(widths) * cos, cos };
+  };
+  const L = slope(-1), R = slope(1);
+
+  // How far inside the roof (x, y) is from each edge, in px (negative: outside it)
+  const inside = (x, y) => [(x - L.line(y)) * L.cos, (R.line(y) - x) * R.cos, bottom(x) - y];
+  // The nearest roof (or wall) pixel showing on each side along (dx, dy), mixed by how close each is
+  const between = (x, y, [dx, dy], ok) => {
+    const look = (s) => {
+      for (let d = 1; d < W; d++) {
+        const X = Math.round(x + s * d * dx), Y = Math.round(y + s * d * dy);
+        if (X < 0 || X >= W || Y < 0 || Y >= H) return null;
+        if (shows(X, Y) && ok(X, Y)) return [d, at(X, Y)];
+      }
+      return null;
+    };
+    const a = look(-1), b = look(1);
+    if (!a || !b) return (a ?? b) && [0, 1, 2].map((c) => pic[(a ?? b)[1] + c]);
+    return [0, 1, 2].map((c) => (pic[a[1] + c] * b[0] + pic[b[1] + c] * a[0]) / (a[0] + b[0]));
+  };
+  // Near a slope the roof is shaded along it (darker down the right side), so there the colors are
+  // taken from along the slope; elsewhere from along the row
+  const along = (line) => {
+    const b = line(1) - line(0), len = Math.hypot(1, b);
+    return [b / len, 1 / len];
+  };
+  const ROW = [1, 0];
+
+  const INK = [56, 24, 6];
+  const set = (i, rgb, alpha) => {
+    for (let c = 0; c < 3; c++) pic[i + c] = Math.round(rgb[c]);
+    pic[i + 3] = Math.round(alpha);
+  };
+  const fills = [];
+  for (let y = Math.max(peak - 4, 0); y < Math.min(hy + 60, H); y++)
+    for (let x = 0; x < W; x++) {
+      if (!hole[y * W + x]) continue;
+      const [dl, dr, db] = inside(x, y);
+      const i = at(x, y);
+      const side = Math.min(dl, dr);
+      if (db < -bottomInk / 2) {
+        // Under the bottom edge: the tower's wall, if this was filled in as part of it
+        if (pic[i + 3] > 128) fills.push([i, between(x, y, ROW, isWall), 255]);
+        continue;
+      }
+      if (side < -0.5) {
+        set(i, [0, 0, 0], 0);
+        continue;
+      }
+      const onSlope = dl < L.ink || dr < R.ink;
+      if (onSlope || Math.abs(db) <= bottomInk / 2) {
+        set(i, INK, side < 0.5 ? 255 * (side + 0.5) : 255);
+        continue;
+      }
+      const dir = dl < 20 ? along(L.line) : dr < 20 ? along(R.line) : ROW;
+      fills.push([i, between(x, y, dir, isRoof), 255]);
+    }
+  // (filled in after, so each fill reads only the drawing's own pixels, not ones just drawn)
+  for (const [i, rgb, a] of fills) if (rgb) set(i, rgb, a);
+}
+
+function median(v) {
+  return [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
 }

@@ -128,9 +128,8 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   ];
   // ...and what it thinks after being carried somewhere and put down
   const landings = ['Whee!', 'Whoa, I can fly!', 'Where am I now?', 'Again! Again!', 'That was fun!'];
-  // ...or after being put down in the woods
-  const lost = ['Eek, the woods!', 'Too many trees!', 'Back to the village!', 'Not the woods!'];
-  const RUN = 2.6; // how much faster a villager runs out of the woods than it walks
+  // ...or after being let go over the woods (it pops back into the clearing instead)
+  const lostLines = ['Not the woods!', 'Too many trees out there!', 'Back to the village!', 'Phew, made it back!'];
 
   type Point = { x: number; y: number };
 
@@ -169,11 +168,10 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   };
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
   // Where a villager put down at p lands: dropped on a building, it falls to the ground just in front
-  // of it; dropped in the woods, it lands right there among the trees (but not so close to the map's
-  // edge that it's cut off) and then runs back out
+  // of it; let go over the woods, it pops straight back to the nearest spot in the clearing
   const landingSpot = (p: Point): Point => {
     const under = OBSTACLES.find(([l, t, r, b]) => p.x > l - MARGIN && p.x < r + MARGIN && p.y > t && p.y < b + MARGIN * 0.6);
-    if (!under) return { x: clamp(p.x, 30, MAP.width - 30), y: clamp(p.y, 90, MAP.height - 10) };
+    if (!under) return nearestSpot(p);
     const [l, , r, b] = under;
     return nearestSpot({ x: clamp(p.x, l, r), y: b + MARGIN * 0.6 + 8 });
   };
@@ -219,7 +217,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       let swing = 0;
       let lastX = x;
       let fall: { from: Point; to: Point; t: number } | null = null;
-      let running = false; // hurrying back out of the woods
+      let lost = false; // let go over the woods and popped back into the clearing
 
       const place = () => {
         // A touch smaller further back, and further back walks behind closer things
@@ -260,15 +258,10 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         el.classList.add('is-landing');
         sprite.addEventListener('animationend', () => el.classList.remove('is-landing'), { once: true });
         show(v.rest);
-        if (!canStand(x, y)) {
-          // In the woods: straight back to the nearest open grass, at a run
-          path = [nearestSpot({ x, y })];
-          running = true;
-          think(lost[Math.floor(Math.random() * lost.length)]);
-          return;
-        }
         restUntil = now + GREET_MS + 600;
-        think(landings[Math.floor(Math.random() * landings.length)]);
+        const said = lost ? lostLines : landings;
+        lost = false;
+        think(said[Math.floor(Math.random() * said.length)]);
       };
 
       // Pick somewhere to wander: a mix of straight across, straight up/down, and diagonal trips
@@ -326,7 +319,6 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         },
         // Tapped: stop, face you, and think a greeting for a few seconds
         greet() {
-          if (running) return; // too busy getting out of the woods to stop and chat
           path = [];
           clearTimeout(idleTimer);
           sprite.style.rotate = '';
@@ -342,7 +334,6 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         pickUp(p: Point) {
           path = [];
           fall = null;
-          running = false;
           clearTimeout(idleTimer);
           clearTimeout(greetTimer);
           thought.classList.remove('is-showing');
@@ -359,14 +350,17 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
           y = clamp(p.y + grab.y, LIFT, MAP.height);
           place();
         },
-        // Let go: it drops to the ground (in front of the building if it's over one)
+        // Let go: it drops to the ground (in front of the building if it's over one). Over the woods it
+        // pops back into the clearing first and drops there.
         drop() {
           held = false;
           const to = landingSpot({ x, y });
+          if (!canStand(x, y) && !OBSTACLES.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6)) {
+            lost = true;
+            ({ x, y } = to);
+          }
           if (reduceMotion.matches) {
-            // Nothing moves on its own with reduced motion, so it couldn't run out of the woods: put it
-            // straight down on the nearest open grass instead
-            ({ x, y } = nearestSpot(to));
+            ({ x, y } = to);
             land(performance.now());
           } else fall = { from: { x, y }, to, t: 0 };
           place();
@@ -412,19 +406,16 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
             const dist = Math.hypot(dx, dy);
             if (dist < 2) {
               path.shift();
-              if (!path.length) {
-                running = false;
-                rest(now);
-              }
+              if (!path.length) rest(now);
             } else {
-              const move = Math.min(dist, (v.speed ?? SPEED) * (running ? RUN : 1) * dt);
+              const move = Math.min(dist, (v.speed ?? SPEED) * dt);
               x += (dx / dist) * move;
               y += (dy / dist) * move;
               // Face the way they're heading. Going straight up or down keeps whichever side they
               // last faced and walks the same way, just moving up or down the screen.
               if (Math.abs(dx) > 4) facing = dx < 0 ? v.left : v.right;
               walkTime += dt * 1000;
-              const stepMs = (v.stepMs ?? STEP_MS) / (running ? 1.8 : 1);
+              const stepMs = v.stepMs ?? STEP_MS;
               show(facing[Math.floor(walkTime / stepMs) % facing.length]);
               // Waddle: rock from foot to foot (one full rock every two steps), tipped a little toward
               // the direction of travel
