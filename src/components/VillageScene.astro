@@ -2,12 +2,15 @@
 // The village, drawn from above at an angle (3/4 view): forest all around an open grassy
 // clearing with paths between the buildings, styled after the Works painting. All shapes built from
 // code; the buildings themselves are the hand-drawn pictures placed on top in src/pages/village.astro.
-// Two layers: `back` is everything villagers walk in front of; `front` is the row of trees along the
-// bottom edge that villagers walk behind.
+// Three layers: `back` is the ground (grass, paths); `trees` is the flowers and trees on it (the trees in
+// rows stacked by depth, so villagers can stand among them), which sway
+// in the breeze (kept apart from the ground, whose blur filters would be slow to redraw every frame);
+// `front` is the row of trees along the bottom edge that villagers walk behind.
+// Villagers walk in front of the first two.
 import { MAP, FOREST_EDGE, PATHS } from '../data/village-map';
 
 interface Props {
-  layer: 'back' | 'front';
+  layer: 'back' | 'trees' | 'front';
 }
 const { layer } = Astro.props;
 
@@ -68,11 +71,29 @@ function tree(x: number, y: number, s: number, tall: boolean, c: string[]) {
   const shape = lumpy(x, y, w, h, bumps);
   // A softer, lighter patch toward the top left, like light falling on it
   const hl = lumpy(x - w * 0.12, y - h * 0.22, w * 0.62, h * 0.6, bumps - 3);
+  // The shadow stays put while the tree sways above it
   return (
     `<ellipse cx="${n(x + 4)}" cy="${n(y)}" rx="${n(w * 0.58)}" ry="${n(8 * s)}" fill="#86a65a" opacity="0.35"/>` +
+    `<g class="sway" style="${breeze(x, 1)}">` +
     `<path d="${shape}" fill="${c[0]}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>` +
-    `<path d="${hl}" fill="${c[1]}" opacity="0.5"/>`
+    `<path d="${hl}" fill="${c[1]}" opacity="0.5"/>` +
+    `</g>`
   );
+}
+
+// ---------- Breeze ----------
+// Every so often a gust blows through from the left: the trees and flowers lean over and settle back,
+// one after another across the map, then it's calm again until the next one. Each thing gets the same
+// sway, started a little later the further right it stands (and a touch of randomness so neighbors
+// don't move in lockstep). `amount` scales how far it leans.
+const GUST_EVERY = 9; // seconds
+const GUST_CROSSES = 2.6; // seconds for a gust to get from one side of the map to the other
+// Its own random numbers, so the breeze doesn't shift where the trees and flowers are placed
+const windRand = seeded(91);
+const jitter = (a: number, b: number) => a + windRand() * (b - a);
+function breeze(x: number, amount: number) {
+  const start = (x / MAP.width) * GUST_CROSSES + jitter(-0.15, 0.15) - GUST_EVERY;
+  return `animation-delay: ${start.toFixed(2)}s; --lean: ${(amount * jitter(0.8, 1.2)).toFixed(2)}`;
 }
 
 // Scatter trees on a jittered grid, keeping only the spots outside the clearing
@@ -174,7 +195,7 @@ const speckles = Array.from({ length: 18 }, () => {
 // ...and a few of the painting's cute single flowers: a round blue one with a smile, a big white
 // one, and a little pink cup
 function bloom(kind: number, x: number, y: number) {
-  return `<g transform="translate(${n(x)} ${n(y)}) scale(1.7) translate(${n(-x)} ${n(-y)})">${bloomShape(kind, x, y)}</g>`;
+  return `<g class="sway" style="${breeze(x, 2.5)}"><g transform="translate(${n(x)} ${n(y)}) scale(1.7) translate(${n(-x)} ${n(-y)})">${bloomShape(kind, x, y)}</g></g>`;
 }
 function bloomShape(kind: number, x: number, y: number) {
   const stem = `<path d="M ${n(x)} ${n(y)} q -1 -6 0 -12" stroke="#5d8545" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
@@ -347,8 +368,14 @@ const blooms = Array.from({ length: 9 }, (_, i) => {
   return bloom(i % 3, spot.x, spot.y);
 }).join('');
 
-// Trees are drawn top of the map first, so lower ones overlap them
-const standing = backTrees.map((t) => t.svg).join('');
+// Trees are drawn top of the map first, so lower ones overlap them. They're split into rows, each its
+// own picture stacked by how far down the map it is (the same way villagers and buildings are), so a
+// villager put down in the woods stands among the trees: in front of the rows above its feet, behind
+// the ones below.
+const ROW = 40;
+const treeRows = Object.values(
+  Object.groupBy(backTrees, (t) => Math.floor(t.y / ROW)),
+).map((row) => ({ z: Math.round(Math.max(...row!.map((t) => t.y))), svg: row!.map((t) => t.svg).join('') }));
 
 const scene = `
   <defs>
@@ -366,18 +393,14 @@ const scene = `
   ${speckles}
   ${tufts}
   ${paths}
-  ${blooms}
-  ${standing}
 `;
+
 ---
 
-{
-  layer === 'back' ? (
-    <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={scene} />
-  ) : (
-    <svg class="scene front" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={frontTrees} />
-  )
-}
+{layer === 'back' && <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={scene} />}
+{layer === 'trees' && <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={blooms} />}
+{layer === 'trees' && treeRows.map(({ z, svg }) => <svg class="scene" style={`z-index: ${z}`} viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={svg} />)}
+{layer === 'front' && <svg class="scene front" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={frontTrees} />}
 
 <style>
   .scene {
@@ -386,10 +409,30 @@ const scene = `
     width: 100%;
     height: 100%;
     display: block;
+    pointer-events: none; /* clicks go through to the map and the villagers, even where trees are drawn over them */
   }
-  /* trees along the bottom edge: drawn over the villagers, and clicks pass through */
+  /* trees along the bottom edge: drawn over the villagers */
   .front {
     z-index: 5000;
-    pointer-events: none;
+  }
+
+  /* The breeze (see breeze() above). Things lean from their base, away from the wind, and wobble back. */
+  .scene :global(.sway) {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: sway 9s ease-in-out infinite;
+  }
+  @keyframes sway {
+    0%, 74%, 100% { transform: skewX(0deg); }
+    8% { transform: skewX(calc(var(--lean) * -3.2deg)); }
+    20% { transform: skewX(calc(var(--lean) * 0.9deg)); }
+    32% { transform: skewX(calc(var(--lean) * -1.5deg)); }
+    45% { transform: skewX(calc(var(--lean) * 0.4deg)); }
+    58% { transform: skewX(calc(var(--lean) * -0.5deg)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scene :global(.sway) {
+      animation: none;
+    }
   }
 </style>

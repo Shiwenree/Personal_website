@@ -17,7 +17,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
 
 <BaseLayout title="Village">
   <h1>Village</h1>
-  <p class="intro">The village is still being built. Wander around, click anywhere in the clearing to call a villager over, or tap a villager to say hi.</p>
+  <p class="intro">The village is still being built. Wander around, click anywhere in the clearing to call a villager over, tap a villager to say hi, or pick one up and carry them somewhere new. Hover over a building to learn about it.</p>
 
   <!-- On narrow screens the map keeps its size and scrolls sideways instead of shrinking to nothing -->
   <!-- The thought clouds' shading: white on top, melting into pale sky blue at the bottom -->
@@ -31,21 +31,42 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   <div class="scroller">
     <div class="map" data-map style={`aspect-ratio: ${MAP.width} / ${MAP.height}`}>
       <VillageScene layer="back" />
+      <VillageScene layer="trees" />
 
       <!-- Each building is stacked by where it meets the ground, the same way the villagers are, so
            villagers walk behind the ones further down the map and in front of the ones further up -->
-      {BUILDINGS.map((b) => {
-        const { left, top, w, h, ground } = placed(b);
+      {BUILDINGS.map((b, i) => {
+        const { left, top, w, h, ground, at } = placed(b);
+        const z = b.flat ? 1 : Math.round(ground);
+        const sails = b.sails && { size: b.sails.size * b.scale, hub: at(b.sails.hub) };
         return (
-          <img
-            class="building"
-            src={versioned(b.src)}
-            alt=""
-            decoding="async"
-            style={`left: ${pct(left, MAP.width)}; top: ${pct(top, MAP.height)}; width: ${pct(w, MAP.width)}; height: ${pct(h, MAP.height)}; z-index: ${b.flat ? 1 : Math.round(ground)}`}
-          />
+          <>
+            <img
+              class="building"
+              data-building={i}
+              src={versioned(b.src)}
+              alt={b.name}
+              decoding="async"
+              style={`left: ${pct(left, MAP.width)}; top: ${pct(top, MAP.height)}; width: ${pct(w, MAP.width)}; height: ${pct(h, MAP.height)}; z-index: ${z}`}
+            />
+            {sails && (
+              <img
+                class="sails"
+                src={versioned(b.sails!.src)}
+                alt=""
+                decoding="async"
+                style={`left: ${pct(sails.hub[0] - sails.size / 2, MAP.width)}; top: ${pct(sails.hub[1] - sails.size / 2, MAP.height)}; width: ${pct(sails.size, MAP.width)}; height: ${pct(sails.size, MAP.height)}; z-index: ${z}`}
+              />
+            )}
+          </>
         );
       })}
+
+      <!-- The card that pops up over a building you're hovering over (or tapped) -->
+      <div class="building-card" data-card role="status">
+        <p class="building-name" data-card-name></p>
+        <p class="building-about" data-card-about></p>
+      </div>
 
       {Object.entries(villagers).map(([key, { name, village: v }]) => (
         <div
@@ -56,7 +77,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
           style={`--fw: ${v.width}; --fh: ${v.height}; --frames: ${v.frames}`}
         >
           <span class="shadow"></span>
-          <span class="sprite" style={`background-image: url(${versioned(v.sheet)})`}></span>
+          <span class="sprite" data-sprite style={`background-image: url(${versioned(v.sheet)})`}></span>
           <!-- Thought cloud, shown for a few seconds when the villager is tapped -->
           <div class="thought" data-thought aria-hidden="true">
             <svg class="thought-cloud" viewBox="0 0 240 124">
@@ -80,7 +101,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
 
 <script>
   import { villagers } from '../data/villagers';
-  import { MAP, WALKABLE, OBSTACLES, HUB } from '../data/village-map';
+  import { MAP, WALKABLE, OBSTACLES, HUB, BUILDINGS, placed } from '../data/village-map';
 
   // Each villager wanders the clearing on its own: side to side, up and down, and diagonally, resting
   // in between, and never walking through the buildings or the garden.
@@ -90,6 +111,9 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   const STEP_MS = 170; // default time per walk frame
   const MARGIN = 26; // how close a villager's feet may get to an obstacle
   const GREET_MS = 3200; // how long the thought cloud stays up after tapping a villager
+  const LIFT = 30; // how high a picked-up villager is held above the ground, in map units
+  const FALL_S = 0.32; // how long a dropped villager takes to land
+  const CARD_MS = 4000; // on touch screens, how long a building's card stays up after tapping it
 
   // What a villager thinks when you tap it (one at random, never the same twice in a row)
   const greetings = (name: string) => [
@@ -102,6 +126,11 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     'Have you tried the bakery?',
     'Nice to see you!',
   ];
+  // ...and what it thinks after being carried somewhere and put down
+  const landings = ['Whee!', 'Whoa, I can fly!', 'Where am I now?', 'Again! Again!', 'That was fun!'];
+  // ...or after being put down in the woods
+  const lost = ['Eek, the woods!', 'Too many trees!', 'Back to the village!', 'Not the woods!'];
+  const RUN = 2.6; // how much faster a villager runs out of the woods than it walks
 
   type Point = { x: number; y: number };
 
@@ -126,6 +155,27 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     if (clearPath(a, b)) return [b];
     if (clearPath(a, HUB) && clearPath(HUB, b)) return [HUB, b];
     return null;
+  };
+  // The closest spot to p a villager can stand on (for putting one down in a building or the woods)
+  const nearestSpot = (p: Point): Point => {
+    if (canStand(p.x, p.y)) return p;
+    for (let r = 8; r < 1200; r += 8)
+      for (let k = 0; k < 36; k++) {
+        const a = (k / 36) * Math.PI * 2;
+        const q = { x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r * 0.7 };
+        if (canStand(q.x, q.y)) return q;
+      }
+    return HUB;
+  };
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  // Where a villager put down at p lands: dropped on a building, it falls to the ground just in front
+  // of it; dropped in the woods, it lands right there among the trees (but not so close to the map's
+  // edge that it's cut off) and then runs back out
+  const landingSpot = (p: Point): Point => {
+    const under = OBSTACLES.find(([l, t, r, b]) => p.x > l - MARGIN && p.x < r + MARGIN && p.y > t && p.y < b + MARGIN * 0.6);
+    if (!under) return { x: clamp(p.x, 30, MAP.width - 30), y: clamp(p.y, 90, MAP.height - 10) };
+    const [l, , r, b] = under;
+    return nearestSpot({ x: clamp(p.x, l, r), y: b + MARGIN * 0.6 + 8 });
   };
   const randomSpot = (): Point => {
     for (let i = 0; i < 200; i++) {
@@ -161,14 +211,64 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       let restUntil = performance.now() + 800 + index * 1200;
       let idleTimer = 0;
       let walkTime = 0;
+      // Being carried: where it was grabbed (relative to its feet), how high it's held, how far it's
+      // swinging, and where it was a frame ago (to swing it by how fast it's moving)
+      let held = false;
+      let grab: Point = { x: 0, y: 0 };
+      let lift = 0;
+      let swing = 0;
+      let lastX = x;
+      let fall: { from: Point; to: Point; t: number } | null = null;
+      let running = false; // hurrying back out of the woods
 
       const place = () => {
         // A touch smaller further back, and further back walks behind closer things
-        const depth = (y - (WALKABLE.cy - WALKABLE.ry)) / (WALKABLE.ry * 2);
+        const depth = clamp((y - (WALKABLE.cy - WALKABLE.ry)) / (WALKABLE.ry * 2), 0, 1);
         el.style.translate = `${x * scale}px ${y * scale}px`;
         el.style.scale = String(0.9 + depth * 0.1);
-        // While thinking, its cloud goes over everything, even the trees along the bottom
-        el.style.zIndex = greeting ? '6000' : String(Math.round(y));
+        // Held up off the ground; its shadow stays down where its feet would land
+        sprite.style.translate = lift ? `0 ${-lift * scale}px` : '';
+        // While carried it's held over everything; while thinking, its cloud goes over everything, even
+        // the trees along the bottom
+        el.style.zIndex = held || fall ? '7000' : greeting ? '6000' : String(Math.round(y));
+      };
+
+      // Think something for a few seconds
+      const think = (line: string) => {
+        thoughtText.textContent = line;
+        greeting = true;
+        thought.classList.add('is-showing');
+        place();
+        clearTimeout(greetTimer);
+        greetTimer = window.setTimeout(() => {
+          thought.classList.remove('is-showing');
+          // Let the fade finish before it drops back into the crowd
+          greetTimer = window.setTimeout(() => {
+            greeting = false;
+            place();
+          }, 700);
+        }, GREET_MS);
+      };
+
+      // Back on the ground after being carried: a little squash, then it says how that was
+      const land = (now: number) => {
+        fall = null;
+        lift = 0;
+        swing = 0;
+        sprite.style.rotate = '';
+        el.classList.remove('is-held');
+        el.classList.add('is-landing');
+        sprite.addEventListener('animationend', () => el.classList.remove('is-landing'), { once: true });
+        show(v.rest);
+        if (!canStand(x, y)) {
+          // In the woods: straight back to the nearest open grass, at a run
+          path = [nearestSpot({ x, y })];
+          running = true;
+          think(lost[Math.floor(Math.random() * lost.length)]);
+          return;
+        }
+        restUntil = now + GREET_MS + 600;
+        think(landings[Math.floor(Math.random() * landings.length)]);
       };
 
       // Pick somewhere to wander: a mix of straight across, straight up/down, and diagonal trips
@@ -216,6 +316,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       show(v.rest);
       place();
       return {
+        sprite,
         distanceTo: (p: Point) => Math.hypot(p.x - x, p.y - y),
         // Is this screen point on the villager? Returns how far down the map it stands (so the one in
         // front wins when two overlap), or -1 if not.
@@ -225,6 +326,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         },
         // Tapped: stop, face you, and think a greeting for a few seconds
         greet() {
+          if (running) return; // too busy getting out of the woods to stop and chat
           path = [];
           clearTimeout(idleTimer);
           sprite.style.rotate = '';
@@ -233,19 +335,41 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
           let i = Math.floor(Math.random() * lines.length);
           if (i === lastLine) i = (i + 1) % lines.length;
           lastLine = i;
-          thoughtText.textContent = lines[i];
-          greeting = true;
-          thought.classList.add('is-showing');
-          place();
+          think(lines[i]);
+        },
+        // Picked up at map point p. Its feet drop down below where it's held, so it stays under the
+        // pointer and its shadow shows where it would land.
+        pickUp(p: Point) {
+          path = [];
+          fall = null;
+          running = false;
+          clearTimeout(idleTimer);
           clearTimeout(greetTimer);
-          greetTimer = window.setTimeout(() => {
-            thought.classList.remove('is-showing');
-            // Let the fade finish before it drops back into the crowd
-            greetTimer = window.setTimeout(() => {
-              greeting = false;
-              place();
-            }, 700);
-          }, GREET_MS);
+          thought.classList.remove('is-showing');
+          greeting = false;
+          held = true;
+          grab = { x: x - p.x, y: y - p.y + LIFT };
+          lift = LIFT;
+          lastX = x;
+          el.classList.add('is-held');
+          this.carry(p);
+        },
+        carry(p: Point) {
+          x = clamp(p.x + grab.x, 0, MAP.width);
+          y = clamp(p.y + grab.y, LIFT, MAP.height);
+          place();
+        },
+        // Let go: it drops to the ground (in front of the building if it's over one)
+        drop() {
+          held = false;
+          const to = landingSpot({ x, y });
+          if (reduceMotion.matches) {
+            // Nothing moves on its own with reduced motion, so it couldn't run out of the woods: put it
+            // straight down on the nearest open grass instead
+            ({ x, y } = nearestSpot(to));
+            land(performance.now());
+          } else fall = { from: { x, y }, to, t: 0 };
+          place();
         },
         goTo(p: Point) {
           const r = route({ x, y }, p);
@@ -258,6 +382,29 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
           place();
         },
         tick(now: number, dt: number) {
+          if (held) {
+            // Dangling: swings from where it's held, trailing behind as it's moved, legs kicking
+            const vx = (x - lastX) / dt;
+            lastX = x;
+            swing += (clamp(vx * 0.07, -30, 30) - swing) * Math.min(1, dt * 8);
+            sprite.style.rotate = `${swing}deg`;
+            if (Math.abs(vx) > 40) facing = vx < 0 ? v.left : v.right;
+            walkTime += dt * 1000;
+            show(facing[Math.floor(walkTime / ((v.stepMs ?? STEP_MS) * 0.6)) % facing.length]);
+            return;
+          }
+          if (fall) {
+            fall.t = Math.min(1, fall.t + dt / FALL_S);
+            const { from, to, t } = fall;
+            x = from.x + (to.x - from.x) * t;
+            y = from.y + (to.y - from.y) * t;
+            lift = LIFT * (1 - t * t);
+            swing *= 1 - Math.min(1, dt * 12);
+            sprite.style.rotate = `${swing}deg`;
+            if (t === 1) land(now);
+            place();
+            return;
+          }
           if (!path.length && now >= restUntil) wander();
           if (path.length) {
             const target = path[0];
@@ -265,16 +412,19 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
             const dist = Math.hypot(dx, dy);
             if (dist < 2) {
               path.shift();
-              if (!path.length) rest(now);
+              if (!path.length) {
+                running = false;
+                rest(now);
+              }
             } else {
-              const move = Math.min(dist, (v.speed ?? SPEED) * dt);
+              const move = Math.min(dist, (v.speed ?? SPEED) * (running ? RUN : 1) * dt);
               x += (dx / dist) * move;
               y += (dy / dist) * move;
               // Face the way they're heading. Going straight up or down keeps whichever side they
               // last faced and walks the same way, just moving up or down the screen.
               if (Math.abs(dx) > 4) facing = dx < 0 ? v.left : v.right;
               walkTime += dt * 1000;
-              const stepMs = v.stepMs ?? STEP_MS;
+              const stepMs = (v.stepMs ?? STEP_MS) / (running ? 1.8 : 1);
               show(facing[Math.floor(walkTime / stepMs) % facing.length]);
               // Waddle: rock from foot to foot (one full rock every two steps), tipped a little toward
               // the direction of travel
@@ -290,17 +440,142 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       };
     });
 
-    // Tap a villager and it says hi. Click (or tap) anywhere else in the clearing and the closest
+    const toMap = (e: MouseEvent): Point => {
+      const box = map.getBoundingClientRect();
+      return { x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale };
+    };
+
+    // ---------- Building cards ----------
+    // Hover over a building (or tap it) and a little card about it pops up above it. Only the drawn part
+    // counts, not the empty corners of its picture, so each picture's see-through-ness is read once it loads.
+    const card = map.querySelector<HTMLElement>('[data-card]')!;
+    const cardName = card.querySelector<HTMLElement>('[data-card-name]')!;
+    const cardAbout = card.querySelector<HTMLElement>('[data-card-about]')!;
+    const canHover = matchMedia('(hover: hover)');
+    const buildings = [...map.querySelectorAll<HTMLImageElement>('[data-building]')].map((img) => {
+      const b = BUILDINGS[Number(img.dataset.building)];
+      const spot = { img, b, box: placed(b), z: Number(img.style.zIndex), alpha: null as Uint8ClampedArray | null };
+      const read = () => {
+        try {
+          const c = document.createElement('canvas');
+          [c.width, c.height] = b.size;
+          const ctx = c.getContext('2d', { willReadFrequently: true })!;
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          spot.alpha = ctx.getImageData(0, 0, c.width, c.height).data;
+        } catch {
+          // Can't read it; the whole picture's box counts instead
+        }
+      };
+      if (img.complete && img.naturalWidth) read();
+      else img.addEventListener('load', read, { once: true });
+      return spot;
+    });
+    type Spot = (typeof buildings)[number];
+    // The building drawn at map point p (the frontmost, if they overlap)
+    const buildingAt = (p: Point) =>
+      buildings
+        .filter(({ b, box, alpha }) => {
+          const px = Math.floor((p.x - box.left) / b.scale), py = Math.floor((p.y - box.top) / b.scale);
+          if (px < 0 || py < 0 || px >= b.size[0] || py >= b.size[1]) return false;
+          return !alpha || alpha[(py * b.size[0] + px) * 4 + 3] > 60;
+        })
+        .sort((a, c) => c.z - a.z)[0];
+
+    let shown: Spot | undefined;
+    let cardTimer = 0;
+    const hideCard = () => {
+      clearTimeout(cardTimer);
+      if (!shown) return;
+      shown.img.classList.remove('is-hovered');
+      card.classList.remove('is-showing');
+      shown = undefined;
+    };
+    const showCard = (spot: Spot) => {
+      clearTimeout(cardTimer);
+      if (shown === spot) return;
+      hideCard();
+      shown = spot;
+      cardName.textContent = spot.b.name;
+      cardAbout.textContent = spot.b.about;
+      spot.img.classList.add('is-hovered');
+      // To the left of the building, level with its middle, kept inside the map (on a narrow map it
+      // may overlap the building's left side a little rather than go off the edge)
+      const { left, top, w, h } = spot.box;
+      const gap = 10, inset = w * 0.08; // the pictures have a little empty space around the drawing
+      card.style.left = `${Math.max((left + inset) * scale - gap, card.offsetWidth + 8)}px`;
+      const halfH = card.offsetHeight / 2 + 8;
+      card.style.top = `${clamp((top + h / 2) * scale, halfH, map.clientHeight - halfH)}px`;
+      card.classList.add('is-showing');
+    };
+
+    // ---------- Picking villagers up ----------
+    // Press on a villager and move, and it's lifted up and carried along until you let go. (Just
+    // tapping it still says hi, through the click handler below.)
+    let drag: { w: (typeof walkers)[number]; id: number; from: Point; startX: number; startY: number; lifted: boolean } | null = null;
+    let dragged = false; // swallow the click that follows letting go of a carried villager
+    for (const w of walkers) {
+      w.sprite.addEventListener('pointerdown', (e) => {
+        if (drag || e.button !== 0) return;
+        e.preventDefault();
+        w.sprite.setPointerCapture(e.pointerId);
+        drag = { w, id: e.pointerId, from: toMap(e), startX: e.clientX, startY: e.clientY, lifted: false };
+      });
+    }
+    map.addEventListener('pointerdown', () => (dragged = false), true);
+    map.addEventListener('pointermove', (e) => {
+      if (drag && e.pointerId === drag.id) {
+        if (!drag.lifted && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 6) {
+          drag.lifted = true;
+          drag.w.pickUp(drag.from);
+          hideCard();
+          map.classList.add('is-carrying');
+        }
+        if (drag.lifted) drag.w.carry(toMap(e));
+        return;
+      }
+      if (e.pointerType !== 'mouse') return;
+      // Hovering over a villager standing in front of a building is about the villager, not the building
+      const spot = (e.target as HTMLElement).closest('[data-sprite]') ? undefined : buildingAt(toMap(e));
+      if (spot) showCard(spot);
+      else hideCard();
+    });
+    const letGo = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.lifted) {
+        drag.w.drop();
+        dragged = true;
+        map.classList.remove('is-carrying');
+      }
+      drag = null;
+    };
+    map.addEventListener('pointerup', letGo);
+    map.addEventListener('pointercancel', letGo);
+    map.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse' && !drag) hideCard();
+    });
+
+    // Tap a villager and it says hi. Tap a building to see its card (on touch screens; with a mouse
+    // it's already up from hovering). Click (or tap) anywhere else in the clearing and the closest
     // villager that can get there walks over.
     map.addEventListener('click', (e) => {
+      if (dragged) {
+        dragged = false;
+        return;
+      }
       const tapped = walkers.map((w) => ({ w, depth: w.hit(e.clientX, e.clientY) })).filter((t) => t.depth >= 0);
       if (tapped.length) {
         tapped.sort((a, b) => b.depth - a.depth)[0].w.greet();
         return;
       }
+      const p = toMap(e);
+      const spot = buildingAt(p);
+      if (spot) {
+        showCard(spot);
+        if (!canHover.matches) cardTimer = window.setTimeout(hideCard, CARD_MS);
+        return;
+      }
+      if (!canHover.matches) hideCard();
       if (reduceMotion.matches) return;
-      const box = map.getBoundingClientRect();
-      const p = { x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale };
       const byDistance = [...walkers].sort((a, b) => a.distanceTo(p) - b.distanceTo(p));
       for (const w of byDistance) if (w.goTo(p)) break;
     });
@@ -308,6 +583,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     new ResizeObserver(() => {
       scale = map.clientWidth / MAP.width;
       walkers.forEach((w) => w.resize());
+      hideCard();
     }).observe(map);
 
     if (!reduceMotion.matches) {
@@ -345,12 +621,94 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     border-radius: var(--radius);
     background: #a9cf86;
     cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .map.is-carrying,
+  .map.is-carrying .sprite {
+    cursor: grabbing;
   }
 
-  .building {
+  .building,
+  .sails {
     position: absolute;
-    pointer-events: none; /* clicks go through to the map, to call a villager over */
+    pointer-events: none; /* clicks go through to the map, to call a villager over (or show its card) */
     user-select: none;
+  }
+  .building {
+    transition: filter 0.25s ease;
+  }
+  .building.is-hovered {
+    filter: drop-shadow(0 0 0.4rem rgb(255 252 230 / 0.95)) brightness(1.04);
+  }
+  /* The windmill's sails turn slowly around the hub */
+  .sails {
+    animation: turn 14s linear infinite;
+  }
+  @keyframes turn {
+    to {
+      rotate: 360deg;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sails {
+      animation: none;
+    }
+  }
+
+  /* ---------- Building card ---------- */
+  /* A tall, narrow paper card to the left of the building, with a point on its right side aimed at it */
+  .building-card {
+    position: absolute;
+    z-index: 6500;
+    width: 9rem;
+    padding: 0.75rem 0.8rem 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 0.9rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    translate: calc(-100% + 0.4rem) -50%;
+    opacity: 0;
+    transition: opacity 0.2s ease, translate 0.2s ease;
+    pointer-events: none;
+  }
+  .building-card.is-showing {
+    opacity: 1;
+    translate: -100% -50%;
+  }
+  .building-card::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -0.4rem;
+    width: 0.75rem;
+    height: 0.75rem;
+    border: solid var(--line);
+    border-width: 1px 1px 0 0;
+    background: var(--surface);
+    translate: 0 -50%;
+    rotate: 45deg;
+  }
+  .building-name {
+    margin: 0;
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 100;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--accent-ink);
+  }
+  .building-about {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .building-card,
+    .building-card.is-showing {
+      translate: -100% -50%;
+    }
   }
 
   /* ---------- Thought cloud ---------- */
@@ -449,6 +807,35 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   .sprite {
     background: no-repeat 0 0 / calc(var(--frames) * 100%) 100%;
     transform-origin: 50% 100%; /* waddles pivot at the feet */
+    /* The villagers themselves can be grabbed (the rest of the walker lets clicks through to the map) */
+    pointer-events: auto;
+    touch-action: none;
+    cursor: grab;
+  }
+  /* Carried: dangles from near the top of its head, and its shadow shrinks away below it */
+  .walker.is-held .sprite {
+    transform-origin: 50% 12%;
+  }
+  .walker.is-landing .sprite {
+    animation: land 0.35s ease-out;
+  }
+  @keyframes land {
+    0% {
+      scale: 1.1 0.84;
+    }
+    55% {
+      scale: 0.96 1.05;
+    }
+    100% {
+      scale: 1 1;
+    }
+  }
+  .walker .shadow {
+    transition: scale 0.2s ease, opacity 0.2s ease;
+  }
+  .walker.is-held .shadow {
+    scale: 0.65;
+    opacity: 0.6;
   }
   .shadow {
     left: -32%;
