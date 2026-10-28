@@ -16,9 +16,11 @@ const SRC = 'Backgrounds/Untitled_Artwork.png';
 const OUT = 'public/village';
 mkdirSync(OUT, { recursive: true });
 
-// [left, top, right, bottom], whether to remove the painted grass around it, and see-through spots
+// [left, top, right, bottom], whether to remove the painted grass around it, see-through spots
 // inside the line art to color in (in the trimmed picture's px: spots inside, one per area between the
-// lines, a box the fill stays in, and the color)
+// lines, a box the fill stays in, and the color), `autumn`: the hue (degrees) its green bushes turn
+// to for the autumn village and how much richer to make them (remove it to put the bushes back to
+// green), and `windows`: boxes around its windows (trimmed picture px), whose glass lights up at night.
 const AREAS = {
   garden: { area: [0, 620, 820, 1200], clearGrass: true },
   bakery: { area: [460, 160, 940, 640] },
@@ -27,7 +29,7 @@ const AREAS = {
   bookshop: { area: [1120, 940, 1620, 1470] },
 };
 
-for (const [name, { area, clearGrass, fills = [], sails }] of Object.entries(AREAS)) {
+for (const [name, { area, clearGrass, fills = [], sails, autumn, windows }] of Object.entries(AREAS)) {
   const [l, t, r, b] = area;
   const { data, info } = await sharp(SRC)
     .extract({ left: l, top: t, width: r - l, height: b - t })
@@ -58,6 +60,20 @@ for (const [name, { area, clearGrass, fills = [], sails }] of Object.entries(ARE
       if (x < W - 1) stack.push(i + 1);
       if (i >= W) stack.push(i - W);
       if (i < W * (H - 1)) stack.push(i + W);
+    }
+  }
+
+  // Autumn: turn the green bushes orange. The hue changes, and they get a bit lighter and richer (the
+  // same lightness reads much duller in orange than in green); their shading and the ink lines' soft
+  // edges stay as drawn.
+  if (autumn) {
+    const [hue, rich] = autumn;
+    for (let i = 0; i < W * H; i++) {
+      if (data[i * 4 + 3] === 0) continue;
+      const [h, sat, l] = toHsl(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+      if (h < 60 || h > 160 || sat < 0.2) continue;
+      const rgb = fromHsl(hue, Math.min(1, sat * rich), l + (1 - l) * 0.28 * Math.min(1, l * 2));
+      for (let c = 0; c < 3; c++) data[i * 4 + c] = rgb[c];
     }
   }
 
@@ -106,6 +122,7 @@ for (const [name, { area, clearGrass, fills = [], sails }] of Object.entries(ARE
 
   await sharp(pic, { raw: picInfo }).webp({ quality: 90, alphaQuality: 100 }).toFile(`${OUT}/${name}.webp`);
   console.log(`${name}: ${width} x ${height}`);
+  if (windows) await litWindows(pic, width, height, windows, `${OUT}/${name}-lit.webp`);
 }
 
 // Takes the windmill's four sails off the picture, so the page can turn them. The sails are found from
@@ -257,6 +274,7 @@ async function splitSails(pic, W, H, hub, file) {
   }
   // The outline, where the filled-in part meets the outside
   const INK = [40, 32, 24];
+  const outline = new Uint8Array(W * H);
   for (const i of holes) {
     if (!pic[i * 4 + 3]) continue;
     const x = i % W, y = (i / W) | 0;
@@ -266,9 +284,9 @@ async function splitSails(pic, W, H, hub, file) {
         const X = x + dx, Y = y + dy;
         outer = dx * dx + dy * dy <= 5 && X >= 0 && X < W && Y >= 0 && Y < H && pic[(Y * W + X) * 4 + 3] < 128;
       }
-    if (outer) INK.forEach((v, c) => (pic[i * 4 + c] = v));
+    if (outer) INK.forEach((v, c) => (pic[i * 4 + c] = v)), (outline[i] = 1);
   }
-  redrawRoof(pic, W, H, hub, hole);
+  redrawRoof(pic, W, H, hub, hole, outline);
   return size;
 }
 
@@ -276,8 +294,10 @@ async function splitSails(pic, W, H, hub, file) {
 // tower, a shallow curve. Smoothing over where the sails were leaves those lines broken and smudged, so
 // each is measured from the parts that still show and drawn back across the gaps at the drawing's own
 // thickness. The roof and wall either side of the bottom edge are filled in from their own colors along
-// the same row, so the red and the yellow don't blur into each other.
-function redrawRoof(pic, W, H, [hx, hy], hole) {
+// the same row, so the red and the yellow don't blur into each other. The rest of the wall where the
+// sails were is smoothed over again from the wall's own colors only, so it doesn't pick up the roof's red
+// or the window's white. `outline` is the tower's side lines, left as drawn.
+function redrawRoof(pic, W, H, [hx, hy], hole, outline) {
   const at = (x, y) => (y * W + x) * 4;
   const lum = (i) => 0.3 * pic[i] + 0.59 * pic[i + 1] + 0.11 * pic[i + 2];
   const shows = (x, y) => x >= 0 && x < W && y >= 0 && y < H && !hole[y * W + x];
@@ -385,7 +405,8 @@ function redrawRoof(pic, W, H, [hx, hy], hole) {
     pic[i + 3] = Math.round(alpha);
   };
   const fills = [];
-  for (let y = Math.max(peak - 4, 0); y < Math.min(hy + 60, H); y++)
+  const wall = [];
+  for (let y = Math.max(peak - 4, 0); y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!hole[y * W + x]) continue;
       const [dl, dr, db] = inside(x, y);
@@ -393,7 +414,7 @@ function redrawRoof(pic, W, H, [hx, hy], hole) {
       const side = Math.min(dl, dr);
       if (db < -bottomInk / 2) {
         // Under the bottom edge: the tower's wall, if this was filled in as part of it
-        if (pic[i + 3] > 128) fills.push([i, between(x, y, ROW, isWall), 255]);
+        if (pic[i + 3] > 128 && !outline[y * W + x]) wall.push(y * W + x);
         continue;
       }
       if (side < -0.5) {
@@ -410,6 +431,71 @@ function redrawRoof(pic, W, H, [hx, hy], hole) {
     }
   // (filled in after, so each fill reads only the drawing's own pixels, not ones just drawn)
   for (const [i, rgb, a] of fills) if (rgb) set(i, rgb, a);
+  smoothWall(pic, W, H, wall, isWall);
+}
+
+// Fills the pixels in `spots` from the wall around them: each takes the average of its neighbors, over
+// and over until it settles, counting only neighbors that are wall (or are being filled), so lines,
+// the window and the roof don't color it
+function smoothWall(pic, W, H, spots, isWall) {
+  const filling = new Uint8Array(W * H);
+  for (const i of spots) filling[i] = 1;
+  const C = new Float32Array(W * H * 3);
+  const usable = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++)
+    if (filling[i] || isWall(i % W, (i / W) | 0)) {
+      usable[i] = 1;
+      for (let c = 0; c < 3; c++) C[i * 3 + c] = pic[i * 4 + c];
+    }
+  const near = (i) => {
+    const x = i % W;
+    return [x > 0 && i - 1, x < W - 1 && i + 1, i >= W && i - W, i < W * (H - 1) && i + W].filter((j) => j !== false && usable[j]);
+  };
+  const around = spots.map(near);
+  for (let pass = 0; pass < 1500; pass++)
+    spots.forEach((i, k) => {
+      const from = around[k];
+      if (!from.length) return;
+      for (let c = 0; c < 3; c++) C[i * 3 + c] = from.reduce((s, j) => s + C[j * 3 + c], 0) / from.length;
+    });
+  for (const i of spots) for (let c = 0; c < 3; c++) pic[i * 4 + c] = Math.round(C[i * 3 + c]);
+}
+
+// The building's windows lit up, for night: the pale glass inside each window box turns warm yellow
+// (the frames, and whatever is drawn behind the glass, like the books and the bread, stay dark), with a
+// soft glow spilling out around it. Same size as the building's picture, laid on top of it.
+async function litWindows(pic, W, H, boxes, file) {
+  const lit = Buffer.alloc(W * H * 4);
+  for (const [l, t, r, b] of boxes)
+    for (let y = t; y <= b; y++)
+      for (let x = l; x <= r; x++) {
+        const i = (y * W + x) * 4;
+        const [R, G, B, A] = pic.subarray(i, i + 4);
+        const lum = 0.3 * R + 0.59 * G + 0.11 * B;
+        if (A < 200 || lum < 150 || Math.max(R, G, B) - Math.min(R, G, B) > 60) continue;
+        lit.set([255, 214, 120, Math.min(255, (lum - 150) * 4)], i);
+      }
+  const glow = await sharp(lit, { raw: { width: W, height: H, channels: 4 } }).blur(10).raw().toBuffer();
+  for (let i = 3; i < glow.length; i += 4) glow[i] = Math.round(glow[i] * 0.7);
+  await sharp(glow, { raw: { width: W, height: H, channels: 4 } })
+    .composite([{ input: lit, raw: { width: W, height: H, channels: 4 } }])
+    .webp({ quality: 90, alphaQuality: 100 })
+    .toFile(file);
+}
+
+// [hue in degrees, saturation 0-1, lightness 0-1]
+function toHsl(r, g, b) {
+  (r /= 255), (g /= 255), (b /= 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+function fromHsl(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return [r, g, b].map((v) => Math.round((v + m) * 255));
 }
 
 function median(v) {
