@@ -13,6 +13,7 @@ const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${fi
 // A first version of the village, before the real Phaser game exists: a drawn map (forest around a
 // clearing with the hand-drawn buildings in it) where the villagers wander and can be called over.
 const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
+
 ---
 
 <BaseLayout title="Village">
@@ -95,6 +96,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       ))}
 
       <VillageScene layer="front" />
+      <VillageScene layer="night" />
     </div>
   </div>
 </BaseLayout>
@@ -132,12 +134,18 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   const lostLines = ['Not the woods!', 'Too many trees out there!', 'Back to the village!', 'Phew, made it back!'];
 
   type Point = { x: number; y: number };
+  // Everything villagers walk around: the buildings, plus the pumpkins and the scarecrow (laid out by
+  // VillageScene.astro, which writes their spots into the page)
+  const BLOCKED: [number, number, number, number][] = [
+    ...OBSTACLES,
+    ...JSON.parse(document.querySelector('[data-props]')?.textContent ?? '[]'),
+  ];
 
   const canStand = (x: number, y: number) => {
     const dx = (x - WALKABLE.cx) / WALKABLE.rx;
     const dy = (y - WALKABLE.cy) / WALKABLE.ry;
     if (dx * dx + dy * dy > 1) return false;
-    return !OBSTACLES.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6);
+    return !BLOCKED.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6);
   };
   // Is the straight line between two points walkable all the way?
   const clearPath = (a: Point, b: Point) => {
@@ -170,7 +178,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
   // Where a villager put down at p lands: dropped on a building, it falls to the ground just in front
   // of it; let go over the woods, it pops straight back to the nearest spot in the clearing
   const landingSpot = (p: Point): Point => {
-    const under = OBSTACLES.find(([l, t, r, b]) => p.x > l - MARGIN && p.x < r + MARGIN && p.y > t && p.y < b + MARGIN * 0.6);
+    const under = BLOCKED.find(([l, t, r, b]) => p.x > l - MARGIN && p.x < r + MARGIN && p.y > t && p.y < b + MARGIN * 0.6);
     if (!under) return nearestSpot(p);
     const [l, , r, b] = under;
     return nearestSpot({ x: clamp(p.x, l, r), y: b + MARGIN * 0.6 + 8 });
@@ -189,6 +197,11 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     const scroller = map.parentElement!;
     scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
     let scale = map.clientWidth / MAP.width; // pixels per map unit
+    // Start somewhere random in the day/night cycle (480s, see the night layer in VillageScene.astro),
+    // so some visits begin at night
+    // (add ?night to the address to start at night)
+    const night = new URLSearchParams(location.search).has('night');
+    map.style.setProperty('--night-start', `${(night ? -330 : -Math.random() * 480).toFixed(1)}s`);
 
     const walkers = [...map.querySelectorAll<HTMLElement>('[data-walker]')].map((el, index) => {
       const { name, village: v } = villagers[el.dataset.walker!];
@@ -355,7 +368,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         drop() {
           held = false;
           const to = landingSpot({ x, y });
-          if (!canStand(x, y) && !OBSTACLES.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6)) {
+          if (!canStand(x, y) && !BLOCKED.some(([l, t, r, b]) => x > l - MARGIN && x < r + MARGIN && y > t && y < b + MARGIN * 0.6)) {
             lost = true;
             ({ x, y } = to);
           }
@@ -610,7 +623,7 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     min-width: 48rem;
     overflow: hidden;
     border-radius: var(--radius);
-    background: #a9cf86;
+    background: #bac47c;
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;

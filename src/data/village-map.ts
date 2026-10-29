@@ -37,6 +37,7 @@ export interface Building {
   // picture px: the area villagers can't walk through. For standing buildings this also reaches up over
   // the whole picture, so villagers never walk behind a building and disappear.
   blocks: Box;
+  lit?: string; // its windows lit up, laid over it at night (same size as `src`)
   // The windmill's sails, cut off into their own picture (centered on the hub) so they can turn.
   // `hub` is where they're pinned, in picture px; `size` is the sails picture's width and height.
   sails?: { src: string; size: number; hub: Pt };
@@ -44,20 +45,20 @@ export interface Building {
 
 export const BUILDINGS: Building[] = [
   // Door 125 px tall
-  { name: 'Bakery', about: 'Something is always in the oven. Follow the smell of fresh bread.', src: '/village/bakery.webp', size: [374, 374], scale: 0.52, x: 470, bottom: 400, base: 340,
+  { name: 'Bakery', about: 'Something is always in the oven. Follow the smell of fresh bread.', src: '/village/bakery.webp', lit: '/village/bakery-lit.webp', size: [374, 374], scale: 0.52, x: 470, bottom: 400, base: 340,
     door: [287, 300], path: [[560, 450], [680, 500], [797, 522]], blocks: [10, 240, 365, 360] },
   // No door: the main road ends at the front of the cart. The awning comes up to about 1.2 villagers.
   { name: 'Flower cart', about: 'At the top of the main road, with fresh flowers from the garden every morning.', src: '/village/cart.webp', size: [385, 346], scale: 0.36, x: 800, bottom: 365, base: 335,
     door: [190, 340], blocks: [20, 250, 370, 340] },
   // Door 123 px tall; the path starts at the bottom of the steps
-  { name: 'Windmill', about: 'It grinds flour for the bakery whenever the breeze picks up.', src: '/village/windmill.webp', size: [422, 624], scale: 0.53, x: 1200, bottom: 500, base: 590,
+  { name: 'Windmill', about: 'It grinds flour for the bakery whenever the breeze picks up.', src: '/village/windmill.webp', lit: '/village/windmill-lit.webp', size: [422, 624], scale: 0.53, x: 1200, bottom: 500, base: 590,
     door: [213, 615], path: [[1110, 590], [950, 640], [792, 650]], blocks: [50, 470, 390, 600],
     sails: { src: '/village/windmill-sails.webp', size: 484, hub: [211, 198] } },
   // Fences about half a villager tall; the path comes in through the gap between them, off the bakery's
   { name: 'Garden', about: 'Where the vegetables grow, tended a little every day.', src: '/village/garden.webp', size: [576, 378], scale: 0.34, x: 440, bottom: 740, flat: true,
     door: [290, 90], path: [[452, 575], [520, 500], [605, 468]], blocks: [0, 0, 576, 378] },
   // Door 103 px tall; the path starts at the end of the stepping stones and joins the road out of the village
-  { name: 'Bookshop', about: 'Quiet, cozy, and stacked to the ceiling.', src: '/village/bookshop.webp', size: [399, 412], scale: 0.64, x: 1080, bottom: 870, base: 345,
+  { name: 'Bookshop', about: 'Quiet, cozy, and stacked to the ceiling.', src: '/village/bookshop.webp', lit: '/village/bookshop-lit.webp', size: [399, 412], scale: 0.64, x: 1080, bottom: 870, base: 345,
     door: [205, 405], path: [[930, 858], [770, 808]], blocks: [20, 270, 380, 350] },
 ];
 

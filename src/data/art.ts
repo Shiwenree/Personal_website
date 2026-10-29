@@ -60,7 +60,7 @@ export const art: ArtPiece[] = [
     alt: 'Ink sketchbook page of labeled food doodles: steamed egg, soondubu, lamb and mantou, blueberries, gelato, a latte, and more.',
   },
   photo('Pavilion', pavilion, 'Two people sitting in a painted wooden pavilion, a lotus pond and a traditional hall beyond.'),
-  photo('String lights', stringLights, 'A brick-walled patio at dusk under rows of glowing string lights, two people talking on a bench.'),
+  photo('Evening glow', stringLights, 'A brick-walled patio at dusk under rows of glowing string lights, two people talking on a bench.'),
   photo('Birdhouses', birdhouses, 'A tall pole stacked with colorful painted birdhouses against the sky.'),
   photo('Lighthouse', lighthouse, 'A white lighthouse at the top of wooden stairs through beach grass.'),
   {
@@ -78,5 +78,5 @@ export const art: ArtPiece[] = [
   photo('Red lattice', redLattice, 'Looking up at a building wrapped in a dense red wooden lattice.'),
   photo('Rocky shore', rockyShore, 'Dark rocky cliffs meeting white surf under a partly cloudy sky.'),
   photo('Red hibiscus', redHibiscus, 'A single frilly red hibiscus flower hanging on a long stem over a blurred greenhouse path.'),
-  photo('Blue ceiling', blueCeiling, 'A glowing blue glass ceiling framed by tall white columns.'),
+  photo('Aquarium', blueCeiling, 'A glowing blue glass ceiling framed by tall white columns.'),
 ];

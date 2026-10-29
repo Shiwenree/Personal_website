@@ -2,15 +2,16 @@
 // The village, drawn from above at an angle (3/4 view): forest all around an open grassy
 // clearing with paths between the buildings, styled after the Works painting. All shapes built from
 // code; the buildings themselves are the hand-drawn pictures placed on top in src/pages/village.astro.
-// Three layers: `back` is the ground (grass, paths); `trees` is the flowers and trees on it (the trees in
-// rows stacked by depth, so villagers can stand among them), which sway
-// in the breeze (kept apart from the ground, whose blur filters would be slow to redraw every frame);
-// `front` is the row of trees along the bottom edge that villagers walk behind.
-// Villagers walk in front of the first two.
-import { MAP, FOREST_EDGE, PATHS } from '../data/village-map';
+// Four layers: `back` is the ground (grass, paths); `trees` is the pumpkins and trees on it (stacked by
+// depth, so villagers can stand among them), and the trees sway in the breeze (kept apart from the
+// ground, whose blur filters would be slow to redraw every frame); `front` is the row of trees along the
+// bottom edge that villagers walk behind; `night` darkens everything now and then and lights up the
+// jack-o'-lanterns.
+import { MAP, FOREST_EDGE, WALKABLE, PATHS, OBSTACLES, BUILDINGS, placed } from '../data/village-map';
+import { statSync } from 'node:fs';
 
 interface Props {
-  layer: 'back' | 'trees' | 'front';
+  layer: 'back' | 'trees' | 'front' | 'night';
 }
 const { layer } = Astro.props;
 
@@ -36,6 +37,20 @@ const TREE = [
   ['#8aab5c', '#a1c075'],
 ];
 const MUSTARD = ['#e7d58a', '#f0e3a8']; // the occasional yellow tree
+// Autumn (for Halloween): patches of the forest turned amber, orange and rust, as soft as the greens, with
+// a warm brown outline instead of the green one (a third color). Lightest first: a patch shades from
+// amber at its edges to rust in the middle.
+const AUTUMN = [
+  ['#e2b56e', '#ecca92', '#8a6030'],
+  ['#dc9c60', '#e8b685', '#8a5530'],
+  ['#d08a5c', '#e0a67f', '#7f4a2e'],
+  ['#c47a58', '#d8987a', '#77422e'],
+];
+// Where the forest has turned: a smooth bumpy field over the map, made of a few overlapping waves, so
+// autumn trees come in patches instead of scattered one by one. Higher is more turned.
+const turned = (x: number, y: number) =>
+  (Math.sin(x * 0.011 + 1.3) + Math.sin(y * 0.017 + 0.4) + Math.sin((x - y) * 0.008 + 2.1) + Math.sin((x + y * 0.6) * 0.014 + 4.2)) / 4;
+const TURNED_FROM = 0.05;
 
 // ---------- Trees ----------
 // Like the painting: no trunks, just soft shapes with a lumpy (scalloped) outline: a row of outward
@@ -73,9 +88,9 @@ function tree(x: number, y: number, s: number, tall: boolean, c: string[]) {
   const hl = lumpy(x - w * 0.12, y - h * 0.22, w * 0.62, h * 0.6, bumps - 3);
   // The shadow stays put while the tree sways above it
   return (
-    `<ellipse cx="${n(x + 4)}" cy="${n(y)}" rx="${n(w * 0.58)}" ry="${n(8 * s)}" fill="#86a65a" opacity="0.35"/>` +
+    `<ellipse cx="${n(x + 4)}" cy="${n(y)}" rx="${n(w * 0.58)}" ry="${n(8 * s)}" fill="#909a58" opacity="0.35"/>` +
     `<g class="sway" style="${breeze(x, 1)}">` +
-    `<path d="${shape}" fill="${c[0]}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>` +
+    `<path d="${shape}" fill="${c[0]}" stroke="${c[2] ?? INK}" stroke-width="2.4" stroke-linejoin="round"/>` +
     `<path d="${hl}" fill="${c[1]}" opacity="0.5"/>` +
     `</g>`
   );
@@ -108,7 +123,14 @@ for (let gy = -10; gy <= MAP.height + 90; gy += 58) {
     const d = dx * dx + dy * dy;
     if (d < 1 + rand() * 0.12) continue;
     const tall = rand() < 0.58;
-    const color = rand() < 0.12 ? MUSTARD : TREE[Math.floor(rand() * TREE.length)];
+    // (the same rolls as before the autumn colors were added, so no tree moves)
+    const kind = rand();
+    const pick = (set: string[][]) => set[Math.floor(rand() * set.length)];
+    const t = turned(x, y);
+    const color =
+      kind < 0.12 ? MUSTARD
+      : t > TURNED_FROM ? (rand(), AUTUMN[Math.min(AUTUMN.length - 1, Math.floor(((t - TURNED_FROM) / 0.6) * AUTUMN.length))])
+      : pick(TREE);
     trees.push({ x, y, svg: tree(x, y, between(0.9, 1.2), tall, color) });
   }
 }
@@ -130,7 +152,7 @@ const inClearing = (maxR: number) => {
 const strokes = Array.from({ length: 70 }, () => {
   const { x, y } = inClearing(0.98);
   const len = between(12, 34);
-  return `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(len)}" ry="${n(between(1.6, 3))}" transform="rotate(${n(between(-110, -70))} ${n(x)} ${n(y)})" fill="${rand() < 0.7 ? '#9fbd68' : '#dbe9ac'}"/>`;
+  return `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(len)}" ry="${n(between(1.6, 3))}" transform="rotate(${n(between(-110, -70))} ${n(x)} ${n(y)})" fill="${rand() < 0.7 ? '#adb466' : '#e4e2ac'}"/>`;
 }).join('');
 
 // Tufts, like the painting's: a few long, tapered blades that curve and lean the same way. Most are
@@ -167,19 +189,19 @@ const tuftList = [
 ].map(({ x, y }) => tuft(x, y, between(0.9, 1.4), rand() < 0.35));
 const tufts =
   // Only every other tuft gets the soft painted blades (the rest are just the crisp ink ones, or nothing)
-  `<g filter="url(#brush)" fill="#7f9f52" opacity="0.55">${tuftList.filter((_, i) => i % 2 === 0).map((t) => t.soft).join('')}</g>` +
+  `<g filter="url(#brush)" fill="#8c9450" opacity="0.55">${tuftList.filter((_, i) => i % 2 === 0).map((t) => t.soft).join('')}</g>` +
   `<g fill="#4a703a" opacity="0.85">${tuftList.map((t) => t.crisp).join('')}</g>`;
 
-// ---------- Flowers ----------
-// Speckled patches of tiny dots (the painting's wildflower drifts)...
-// Each patch mixes two colors, like the painting's pink-and-peach and yellow-and-peach drifts
+// ---------- Fallen leaves ----------
+// Speckled patches of tiny dots, like the painting's wildflower drifts, but in autumn: leaves blown in
+// from the trees. Each patch mixes two of the trees' autumn colors.
 const SPECKLE = [
-  ['#f4b8d6', '#fbd3e6'],
-  ['#f3d530', '#f6b49a'],
-  ['#ffffff', '#fffbe0'],
-  ['#f6b49a', '#f4b8d6'],
-  ['#f3d530', '#ffe680'],
-  ['#e3c0f0', '#f4b8d6'],
+  ['#e2b56e', '#dc9c60'],
+  ['#dc9c60', '#c47a58'],
+  ['#ecca92', '#e2b56e'],
+  ['#d08a5c', '#e2b56e'],
+  ['#e7d58a', '#dc9c60'],
+  ['#c47a58', '#d08a5c'],
 ];
 const speckles = Array.from({ length: 18 }, () => {
   const { x, y } = inClearing(0.88);
@@ -192,49 +214,58 @@ const speckles = Array.from({ length: 18 }, () => {
   }).join('');
 }).join('');
 
-// ...and a few of the painting's cute single flowers: a round blue one with a smile, a big white
-// one, and a little pink cup
-function bloom(kind: number, x: number, y: number) {
-  return `<g class="sway" style="${breeze(x, 2.5)}"><g transform="translate(${n(x)} ${n(y)}) scale(1.7) translate(${n(-x)} ${n(-y)})">${bloomShape(kind, x, y)}</g></g>`;
-}
-function bloomShape(kind: number, x: number, y: number) {
-  const stem = `<path d="M ${n(x)} ${n(y)} q -1 -6 0 -12" stroke="#5d8545" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
-  if (kind === 0)
-    return (
-      stem +
-      `<circle cx="${n(x)}" cy="${n(y - 17)}" r="7" fill="#b5daf2" stroke="#4f86ad" stroke-width="1.4"/>` +
-      `<path d="M ${n(x - 2.6)} ${n(y - 17)} q 2.6 2.4 5.2 0" stroke="#4f86ad" stroke-width="1.2" fill="none" stroke-linecap="round"/>`
-    );
-  // Leaf: a pointed oval with a dark outline, tilted out from the base
-  const leaf = (lx: number, ly: number, ang: number, len: number) =>
-    `<ellipse cx="${n(lx)}" cy="${n(ly)}" rx="${n(len * 0.22)}" ry="${n(len / 2)}" transform="rotate(${n(ang)} ${n(lx)} ${n(ly)})" fill="#6f9b4c" stroke="#3f6a2e" stroke-width="0.8"/>`;
-  if (kind === 1) {
-    // Big white flower, as in the painting: one soft lumpy blob (lobes merged into a single outline),
-    // a golden outline, a little yellow dash in the middle, and two long leaves
-    const cx = x, cy = y - 22, lobes = 5;
-    let d = '';
-    for (let i = 0; i <= lobes; i++) {
-      const a = (i / lobes) * Math.PI * 2 - Math.PI / 2 + 0.3;
-      const px = cx + Math.cos(a) * 7.6 * (i % 2 ? 1.08 : 0.94), py = cy + Math.sin(a) * 6.6;
-      d += i === 0 ? `M ${n(px)} ${n(py)}` : ` A ${i % 2 ? 5.6 : 5} ${i % 2 ? 5.6 : 5} 0 0 1 ${n(px)} ${n(py)}`;
-    }
-    return (
-      `<path d="M ${n(x)} ${n(y)} q -1 -7 0 -14" stroke="#3f6a2e" stroke-width="1" fill="none" stroke-linecap="round"/>` +
-      leaf(x - 4.5, y - 6, -30, 13) +
-      leaf(x + 5, y - 7, 30, 15) +
-      `<path d="${d} Z" fill="#fbfcf0" stroke="#d9b464" stroke-width="0.9" stroke-linejoin="round"/>` +
-      `<ellipse cx="${n(cx)}" cy="${n(cy + 0.8)}" rx="2.6" ry="0.9" fill="#e2bf45"/>`
-    );
+// ---------- Pumpkins ----------
+// Drawn like the buildings: a near-black ink outline, soft fills, lit from the top left. The body is a
+// few overlapping lobes (outer ones first, so each lobe's outline reads as a rib), darker toward the
+// right, with a short stem and a curly vine on top. Jack-o'-lanterns have a carved face: dark by day,
+// and lit up at night (the `night` layer draws the faces again on top, glowing).
+const PUMPKIN_INK = '#a24f1c'; // a darker orange, not black, for the line art
+const PUMPKIN = { light: '#eeb06c', mid: '#e49a55', dark: '#cf8048', glow: '#f6c98e' };
+type Pumpkin = { x: number; y: number; w: number; svg: string; face?: string };
+
+function pumpkin(x: number, y: number, w: number, carved: boolean): Pumpkin {
+  const h = w * between(0.68, 0.8);
+  const top = y - h;
+  // [offset from the middle, half width, half height, fill], back to front
+  const lobes: [number, number, number, string][] = [
+    [-0.3, 0.22, 0.44, PUMPKIN.light],
+    [0.3, 0.22, 0.44, PUMPKIN.dark],
+    [-0.15, 0.26, 0.48, PUMPKIN.light],
+    [0.15, 0.26, 0.48, PUMPKIN.mid],
+    [0, 0.25, 0.5, PUMPKIN.mid],
+  ];
+  const body = lobes
+    .map(([dx, rx, ry, fill]) =>
+      `<ellipse cx="${n(x + dx * w)}" cy="${n(y - ry * h)}" rx="${n(rx * w)}" ry="${n(ry * h)}" fill="${fill}" stroke="${PUMPKIN_INK}" stroke-width="1.8"/>`)
+    .join('');
+  const shine = `<ellipse cx="${n(x - w * 0.17)}" cy="${n(top + h * 0.3)}" rx="${n(w * 0.07)}" ry="${n(h * 0.14)}" fill="${PUMPKIN.glow}" opacity="0.7" transform="rotate(14 ${n(x - w * 0.17)} ${n(top + h * 0.3)})"/>`;
+  const lean = between(-1, 1);
+  const stem =
+    `<path d="M ${n(x - 2.6)} ${n(top + 3)} q ${n(lean)} -6 ${n(1.5 + lean * 2)} -9 l 4 1.4 q ${n(-2 - lean)} 3.6 -1.2 ${n(7.6)} z" fill="#8a7444" stroke="${PUMPKIN_INK}" stroke-width="1.5" stroke-linejoin="round"/>` +
+    `<path d="M ${n(x + 2)} ${n(top + 1)} q 6 -5 10 -1 q 2.4 3.4 -1.6 4" fill="none" stroke="#6f8a3c" stroke-width="1.4" stroke-linecap="round"/>`;
+  // Carved face: triangle eyes and nose, and a toothy grin
+  let face: string | undefined;
+  if (carved) {
+    const cy = y - h * 0.52, ew = w * 0.1;
+    const eye = (ex: number) => `M ${n(ex - ew)} ${n(cy)} L ${n(ex + ew)} ${n(cy)} L ${n(ex)} ${n(cy - ew * 1.3)} Z`;
+    // (everything in the mouth measured in `u`, so it fits small pumpkins too)
+    const mw = w * 0.27, my = y - h * 0.3, u = w / 36;
+    const mouth =
+      `M ${n(x - mw)} ${n(my - 3 * u)} Q ${n(x)} ${n(my + 5 * u)} ${n(x + mw)} ${n(my - 3 * u)} ` +
+      `Q ${n(x + mw * 0.6)} ${n(my + 9 * u)} ${n(x)} ${n(my + 8 * u)} Q ${n(x - mw * 0.6)} ${n(my + 9 * u)} ${n(x - mw)} ${n(my - 3 * u)} Z ` +
+      // two teeth
+      `M ${n(x - mw * 0.35)} ${n(my + 1.2 * u)} l ${n(2.4 * u)} ${n(3.6 * u)} l ${n(2.4 * u)} ${n(-3.2 * u)} Z ` +
+      `M ${n(x + mw * 0.12)} ${n(my + 1.2 * u)} l ${n(2.4 * u)} ${n(3.6 * u)} l ${n(2.4 * u)} ${n(-3.6 * u)} Z`;
+    const nose = `M ${n(x - ew * 0.55)} ${n(cy + ew * 1.1)} L ${n(x + ew * 0.55)} ${n(cy + ew * 1.1)} L ${n(x)} ${n(cy + ew * 0.2)} Z`;
+    face = `${eye(x - w * 0.17)} ${eye(x + w * 0.17)} ${nose} ${mouth}`;
   }
-  // Little pink flower, as in the painting: a round puff with a purple outline and a short dash
-  // across the middle, sitting on two small leaves (no stem)
-  return (
-    leaf(x - 2.4, y - 4, -12, 8) +
-    leaf(x + 3, y - 4, 28, 8) +
-    `<path d="M ${n(x - 6)} ${n(y - 11)} q 0 -5 6 -5.2 q 6.4 0.2 6 5 q -0.6 3.8 -6 3.8 q -6 0 -6 -3.6 z" fill="#f2c2ec" stroke="#8e5a9c" stroke-width="1"/>` +
-    `<path d="M ${n(x - 2)} ${n(y - 12)} h 4" stroke="#8e5a9c" stroke-width="1" stroke-linecap="round"/>`
-  );
+  const svg =
+    `<ellipse cx="${n(x + 3)}" cy="${n(y)}" rx="${n(w * 0.56)}" ry="${n(w * 0.12)}" fill="#909a58" opacity="0.4"/>` +
+    stem + body + shine +
+    (face ? `<path d="${face}" fill="#5a2e17" fill-rule="evenodd" stroke="${PUMPKIN_INK}" stroke-width="${n(Math.min(0.9, w / 40))}" stroke-linejoin="round"/>` : '');
+  return { x, y, w, svg, face };
 }
+
 // ---------- Paths ----------
 // Dirt paths: the main road up the middle, and each building's path from its door to where it joins
 // another. Drawn like the building art: a near-black ink outline that wobbles a little and breaks here
@@ -359,14 +390,119 @@ const paths =
   pathBits +
   `<g fill="#4a703a" opacity="0.85">${edgeTufts}</g>`;
 
-// The single flowers grow beside the paths, never on them
+// Pumpkins sit in little groups beside the paths, never on them, and never in front of a building
 const pathPoints = pathSamples.flat();
-const offPath = (x: number, y: number) => pathPoints.every(([px, py]) => Math.hypot(px - x, py - y) > halfWidth(py) + 24);
-const blooms = Array.from({ length: 9 }, (_, i) => {
-  let spot = inClearing(0.85);
-  for (let tries = 0; tries < 30 && !offPath(spot.x, spot.y); tries++) spot = inClearing(0.85);
-  return bloom(i % 3, spot.x, spot.y);
-}).join('');
+const offPath = (x: number, y: number) => pathPoints.every(([px, py]) => Math.hypot(px - x, py - y) > halfWidth(py) + 30);
+const clearOfBuildings = (x: number, y: number) => OBSTACLES.every(([l, t, r, b]) => x < l - 30 || x > r + 30 || y < t || y > b + 40);
+const pumpkins: Pumpkin[] = [];
+for (let g = 0; g < 9; g++) {
+  let spot = inClearing(0.82);
+  for (
+    let tries = 0;
+    tries < 60 && !(offPath(spot.x, spot.y) && clearOfBuildings(spot.x, spot.y) && pumpkins.every((p) => Math.hypot(p.x - spot.x, p.y - spot.y) > 120));
+    tries++
+  )
+    spot = inClearing(0.82);
+  // One big pumpkin, carved now and then, with a smaller one or two beside it
+  const big = between(30, 40);
+  // (the one by the bookshop roof is always carved)
+  const carved = rand() < 0.5 || Math.hypot(spot.x - 1272, spot.y - 637) < 20;
+  pumpkins.push(pumpkin(spot.x, spot.y, big, carved));
+  const extra = Math.floor(rand() * 3);
+  for (let k = 0; k < extra; k++) {
+    const side = k === 0 ? 1 : -1;
+    pumpkins.push(pumpkin(spot.x + side * big * between(0.7, 0.85), spot.y + between(3, 9), big * between(0.5, 0.68), rand() < 0.25));
+  }
+}
+// And by the buildings: in front of the windmill's bushes, beside the bakery's door, and at the
+// bookshop's left corner (its front is too close to the trees), all just off the paths. [x, y, width, carved], in map units.
+const DOORSTEP: [number, number, number, boolean][] = [
+  [1122, 506, 30, true], [1146, 512, 17, false],
+  [1282, 506, 26, false], [1304, 511, 19, true],
+  [578, 390, 28, true], [601, 395, 16, false],
+  [930, 827, 28, true], [905, 832, 16, true],
+];
+for (const [x, y, w, carved] of DOORSTEP) pumpkins.push(pumpkin(x, y, w, carved));
+// Each is its own picture stacked by where it sits on the ground, like the villagers, so a villager
+// walks behind the ones further down the map and in front of the ones further up
+pumpkins.sort((a, b) => a.y - b.y);
+const lanterns = pumpkins.filter((p) => p.face);
+
+// ---------- Scarecrow ----------
+// Beside the garden, keeping an eye on the vegetables: a burlap-sack head with button eyes and a
+// stitched smile under a floppy pointed hat, a rust shirt with a patch on a wooden post and crossbar,
+// and straw poking out at the cuffs, collar and hem. Drawn in the buildings' warm dark ink.
+const SCARECROW = { x: 312, y: 712 };
+const scarecrow = (() => {
+  const { x, y } = SCARECROW;
+  const ink = `stroke="#4a3524" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"`;
+  const straw = (sx: number, sy: number, dir: number, down = false) =>
+    [-4, 0, 4]
+      .map((o, i) =>
+        down
+          ? `M ${n(sx + o - 1.6)} ${n(sy)} L ${n(sx + o + dir * (i - 1) * 1.5)} ${n(sy + 8 + (i % 2) * 2)} L ${n(sx + o + 1.6)} ${n(sy)} Z`
+          : `M ${n(sx)} ${n(sy + o - 1.6)} L ${n(sx + dir * (8 + (i % 2) * 2))} ${n(sy + o + (i - 1) * 1.5)} L ${n(sx)} ${n(sy + o + 1.6)} Z`)
+      .join(' ');
+  return (
+    `<ellipse cx="${n(x + 3)}" cy="${n(y)}" rx="22" ry="5" fill="#909a58" opacity="0.4"/>` +
+    // post and crossbar
+    `<rect x="${n(x - 2.6)}" y="${n(y - 74)}" width="5.2" height="74" rx="1.5" fill="#9a7650" ${ink}/>` +
+    `<rect x="${n(x - 31)}" y="${n(y - 60)}" width="62" height="5" rx="1.5" fill="#9a7650" ${ink}/>` +
+    // straw at the cuffs and the hem, behind the shirt
+    `<path d="${straw(x - 28, y - 56, -1)} ${straw(x + 28, y - 56, 1)} ${straw(x, y - 33, 1, true)}" fill="#e7d58a" ${ink}/>` +
+    // shirt with sleeves along the crossbar, and a patch
+    `<path d="M ${n(x - 12)} ${n(y - 63)} L ${n(x - 29)} ${n(y - 61)} L ${n(x - 29)} ${n(y - 51)} L ${n(x - 13)} ${n(y - 52)} L ${n(x - 16)} ${n(y - 32)} Q ${n(x)} ${n(y - 29)} ${n(x + 16)} ${n(y - 32)} L ${n(x + 13)} ${n(y - 52)} L ${n(x + 29)} ${n(y - 51)} L ${n(x + 29)} ${n(y - 61)} L ${n(x + 12)} ${n(y - 63)} Z" fill="#c47a58" ${ink}/>` +
+    `<path d="M ${n(x - 18)} ${n(y - 61)} L ${n(x - 18)} ${n(y - 52)} M ${n(x + 18)} ${n(y - 61)} L ${n(x + 18)} ${n(y - 52)} M ${n(x - 14.5)} ${n(y - 42)} L ${n(x + 14.5)} ${n(y - 42)}" fill="none" stroke="#a65e44" stroke-width="1.2"/>` +
+    `<rect x="${n(x + 3)}" y="${n(y - 49)}" width="8" height="7" rx="1" fill="#e2b56e" ${ink} stroke-dasharray="2 1.4" transform="rotate(8 ${n(x + 7)} ${n(y - 45)})"/>` +
+    // collar straw, then the head
+    `<path d="${straw(x, y - 66, 1, true)}" fill="#e7d58a" ${ink}/>` +
+    `<circle cx="${n(x)}" cy="${n(y - 74)}" r="11" fill="#e6cb95" ${ink}/>` +
+    `<circle cx="${n(x - 4)}" cy="${n(y - 76)}" r="1.8" fill="#4a3524"/><circle cx="${n(x + 4)}" cy="${n(y - 76)}" r="1.8" fill="#4a3524"/>` +
+    `<path d="M ${n(x - 5)} ${n(y - 70.5)} Q ${n(x)} ${n(y - 67)} ${n(x + 5)} ${n(y - 70.5)}" fill="none" stroke="#4a3524" stroke-width="1.2" stroke-linecap="round"/>` +
+    `<path d="M ${n(x - 3)} ${n(y - 70.5)} l 0 2 M ${n(x)} ${n(y - 69.3)} l 0 2 M ${n(x + 3)} ${n(y - 70.5)} l 0 2" stroke="#4a3524" stroke-width="0.9" stroke-linecap="round"/>` +
+    // hat: a wide brim and a floppy pointed crown with a band
+    `<path d="M ${n(x - 9)} ${n(y - 82)} Q ${n(x - 4)} ${n(y - 104)} ${n(x + 10)} ${n(y - 100)} Q ${n(x + 4)} ${n(y - 95)} ${n(x + 9)} ${n(y - 82)} Z" fill="#8a6a44" ${ink}/>` +
+    `<path d="M ${n(x - 8.4)} ${n(y - 85)} Q ${n(x)} ${n(y - 87)} ${n(x + 8.6)} ${n(y - 85)} L ${n(x + 8.9)} ${n(y - 82.6)} Q ${n(x)} ${n(y - 84.4)} ${n(x - 8.8)} ${n(y - 82.6)} Z" fill="#c47a58"/>` +
+    `<ellipse cx="${n(x)}" cy="${n(y - 82)}" rx="17" ry="3.6" fill="#8a6a44" ${ink}/>`
+  );
+})();
+
+// What villagers walk around besides the buildings: each pumpkin's spot on the ground and the
+// scarecrow's post, [left, top, right, bottom] in map units. Handed to the walking code in village.astro.
+const props = [
+  ...pumpkins.map(({ x, y, w }) => [x - w / 2, y - 10, x + w / 2, y + 2].map(Math.round)),
+  [SCARECROW.x - 14, SCARECROW.y - 10, SCARECROW.x + 14, SCARECROW.y + 2],
+];
+
+// ---------- Will-o'-wisps ----------
+// Pale blue-green lights that wander like fireflies: each meanders through its own loop of five
+// random waypoints around a home spot (most out among the trees, a few in the clearing), drifting in
+// and out of the woods and blinking on and off as it goes
+const wispRand = seeded(57);
+const wr = (a: number, b: number) => a + wispRand() * (b - a);
+const wisps = Array.from({ length: 14 }, (_, i) => {
+  const a = (i / 14) * Math.PI * 2 + wr(0, 0.4);
+  const r = i % 3 === 2 ? wr(0.55, 0.85) : wr(1.0, 1.35);
+  const path = Array.from({ length: 5 }, () => [wr(-130, 130), wr(-80, 80)]);
+  return {
+    x: WALKABLE.cx + Math.cos(a) * WALKABLE.rx * r,
+    y: WALKABLE.cy + Math.sin(a) * WALKABLE.ry * r - 20,
+    size: wr(0.6, 1.1),
+    // waypoints as --x1, --y1 ... --x5, --y5 for the `wander` keyframes
+    style:
+      path.map(([x, y], k) => `--x${k + 1}: ${x.toFixed(0)}px; --y${k + 1}: ${y.toFixed(0)}px`).join('; ') +
+      `; animation-duration: ${wr(28, 44).toFixed(1)}s; animation-delay: ${(-wr(0, 44)).toFixed(1)}s`,
+    blink: `animation-duration: ${wr(2.2, 4.2).toFixed(1)}s; animation-delay: ${(-wr(0, 4)).toFixed(1)}s`,
+  };
+});
+
+// The buildings' windows lit up at night (pictures made by scripts/build-village-buildings.mjs)
+const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
+const versioned = (file: string) => `${file}?v=${Math.round(statSync(`public${file}`).mtimeMs)}`;
+const litWindows = BUILDINGS.filter((b) => b.lit).map((b) => {
+  const { left, top, w, h } = placed(b);
+  return { src: versioned(b.lit!), style: `left: ${pct(left, MAP.width)}; top: ${pct(top, MAP.height)}; width: ${pct(w, MAP.width)}; height: ${pct(h, MAP.height)}` };
+});
 
 // Trees are drawn top of the map first, so lower ones overlap them. They're split into rows, each its
 // own picture stacked by how far down the map it is (the same way villagers and buildings are), so a
@@ -384,10 +520,10 @@ const scene = `
     <filter id="shade" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="1.4"/></filter>
     <filter id="wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G"/></filter>
   </defs>
-  <rect width="${MAP.width}" height="${MAP.height}" fill="#b5ce7d"/>
+  <rect width="${MAP.width}" height="${MAP.height}" fill="#c2c87e"/>
   <g filter="url(#soft)">
-    <ellipse cx="${FOREST_EDGE.cx}" cy="${FOREST_EDGE.cy + 15}" rx="${FOREST_EDGE.rx * 0.95}" ry="${FOREST_EDGE.ry * 0.92}" fill="#c6db92"/>
-    <ellipse cx="${FOREST_EDGE.cx - 120}" cy="${FOREST_EDGE.cy - 20}" rx="380" ry="200" fill="#d4e39f"/>
+    <ellipse cx="${FOREST_EDGE.cx}" cy="${FOREST_EDGE.cy + 15}" rx="${FOREST_EDGE.rx * 0.95}" ry="${FOREST_EDGE.ry * 0.92}" fill="#d0d491"/>
+    <ellipse cx="${FOREST_EDGE.cx - 120}" cy="${FOREST_EDGE.cy - 20}" rx="380" ry="200" fill="#dddca0"/>
   </g>
   <g filter="url(#brush)" opacity="0.45">${strokes}</g>
   ${speckles}
@@ -398,9 +534,45 @@ const scene = `
 ---
 
 {layer === 'back' && <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={scene} />}
-{layer === 'trees' && <svg class="scene" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={blooms} />}
+{layer === 'trees' && pumpkins.map(({ y, svg }) => <svg class="scene" style={`z-index: ${Math.round(y)}`} viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={svg} />)}
+{layer === 'trees' && <svg class="scene" style={`z-index: ${SCARECROW.y}`} viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={scarecrow} />}
+{layer === 'trees' && <script type="application/json" data-props set:html={JSON.stringify(props)} />}
 {layer === 'trees' && treeRows.map(({ z, svg }) => <svg class="scene" style={`z-index: ${z}`} viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={svg} />)}
 {layer === 'front' && <svg class="scene front" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true" set:html={frontTrees} />}
+{layer === 'night' && <div class="night" aria-hidden="true" />}
+{layer === 'night' && litWindows.map(({ src, style }) => <img class="lit" src={src} alt="" decoding="async" style={style} />)}
+{layer === 'night' && (
+  <svg class="scene lanterns" viewBox={`0 0 ${MAP.width} ${MAP.height}`} aria-hidden="true">
+    <defs>
+      <radialGradient id="lantern-glow">
+        <stop offset="0" stop-color="#ffc867" stop-opacity="0.6" />
+        <stop offset="0.45" stop-color="#ffa43f" stop-opacity="0.22" />
+        <stop offset="1" stop-color="#ff9a3a" stop-opacity="0" />
+      </radialGradient>
+      <radialGradient id="wisp-glow">
+        <stop offset="0" stop-color="#f2fffb" stop-opacity="1" />
+        <stop offset="0.18" stop-color="#bff5ea" stop-opacity="0.85" />
+        <stop offset="0.5" stop-color="#7fdccf" stop-opacity="0.25" />
+        <stop offset="1" stop-color="#5fc7c0" stop-opacity="0" />
+      </radialGradient>
+    </defs>
+    {wisps.map(({ x, y, size, style, blink }) => (
+      <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}>
+        <g class="wisp" style={style}>
+          <g class="blink" style={blink}>
+            <circle r={(30 * size).toFixed(1)} fill="url(#wisp-glow)" />
+          </g>
+        </g>
+      </g>
+    ))}
+    {lanterns.map(({ x, y, face }, i) => (
+      <g class="flicker" style={`animation-delay: ${(-i * 0.37).toFixed(2)}s`}>
+        <ellipse cx={x} cy={y - 14} rx="62" ry="44" fill="url(#lantern-glow)" />
+        <path d={face} fill="#ffd86e" fill-rule="evenodd" stroke="#ffb347" stroke-width="1" />
+      </g>
+    ))}
+  </svg>
+)}
 
 <style>
   .scene {
@@ -414,6 +586,84 @@ const scene = `
   /* trees along the bottom edge: drawn over the villagers */
   .front {
     z-index: 5000;
+  }
+
+  /* ---------- Night ----------
+     Every few minutes the village goes through dusk into night and back: a see-through deep blue laid
+     over everything (a plain layer rather than a blend mode, so the turning windmill sails darken the
+     same as everything else), and the jack-o'-lanterns' faces, the windows and the will-o'-wisps
+     glow on top of it. Each visit starts at a random point in the cycle (village.astro sets
+     --night-start), so some visitors arrive at night. Above the villagers and trees, below the
+     building card and a villager being carried. */
+  .night,
+  .lanterns,
+  .lit {
+    animation: var(--night-cycle) ease-in-out infinite;
+    animation-delay: var(--night-start, 0s);
+    pointer-events: none;
+  }
+  .night {
+    --night-cycle: 480s nightfall;
+    position: absolute;
+    inset: 0;
+    z-index: 6400;
+    background: #1c2150;
+    opacity: 0;
+  }
+  .lanterns,
+  .lit {
+    --night-cycle: 480s lanterns;
+    z-index: 6410;
+    opacity: 0;
+  }
+  /* Over 8 minutes: day for about 4, then dusk slowly falls (about 45 seconds), night for about
+     2.5 minutes, and a slow dawn. The lights come on partway into dusk and go out partway into dawn. */
+  @keyframes nightfall {
+    0%, 48% { opacity: 0; }
+    57%, 88% { opacity: 0.6; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes lanterns {
+    0%, 51% { opacity: 0; }
+    57%, 89% { opacity: 1; }
+    95%, 100% { opacity: 0; }
+  }
+  /* The windows: over the darkened building, so the glass glows (laid over the night, like the
+     jack-o'-lanterns, which is why a villager walking past one at night has its glow on top) */
+  .lit {
+    position: absolute;
+    z-index: 6405;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Wisps wander like fireflies: through their own waypoints (set on each one), and blinking */
+  .lanterns :global(.wisp) {
+    animation: wander ease-in-out infinite;
+  }
+  @keyframes wander {
+    0%, 100% { transform: translate(var(--x1), var(--y1)); }
+    20% { transform: translate(var(--x2), var(--y2)); }
+    40% { transform: translate(var(--x3), var(--y3)); }
+    60% { transform: translate(var(--x4), var(--y4)); }
+    80% { transform: translate(var(--x5), var(--y5)); }
+  }
+  .lanterns :global(.blink) {
+    animation: blink ease-in-out infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 0.1; }
+    35% { opacity: 1; }
+    55% { opacity: 0.85; }
+    75% { opacity: 0.2; }
+  }
+  .lanterns :global(.flicker) {
+    animation: flicker 2.6s ease-in-out infinite;
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    30% { opacity: 0.82; }
+    45% { opacity: 0.95; }
+    70% { opacity: 0.76; }
   }
 
   /* The breeze (see breeze() above). Things lean from their base, away from the wind, and wobble back. */
@@ -431,8 +681,20 @@ const scene = `
     58% { transform: skewX(calc(var(--lean) * -0.5deg)); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .scene :global(.sway) {
+    .scene :global(.sway),
+    .lanterns :global(.flicker),
+    .lanterns :global(.wisp),
+    .lanterns :global(.blink) {
       animation: none;
+    }
+    .lanterns :global(.blink) {
+      opacity: 0.7;
+    }
+    /* No fading between day and night: it's whichever one the visit started in */
+    .night,
+    .lanterns,
+    .lit {
+      animation-play-state: paused;
     }
   }
 </style>
