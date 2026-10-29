@@ -549,6 +549,8 @@ const scene = `
         <stop offset="0.45" stop-color="#ffa43f" stop-opacity="0.22" />
         <stop offset="1" stop-color="#ff9a3a" stop-opacity="0" />
       </radialGradient>
+      <!-- Turns a villager's picture into a black silhouette, for cutting it out of the lantern faces -->
+      <filter id="silhouette"><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" /></filter>
       <radialGradient id="wisp-glow">
         <stop offset="0" stop-color="#f2fffb" stop-opacity="1" />
         <stop offset="0.18" stop-color="#bff5ea" stop-opacity="0.85" />
@@ -565,10 +567,15 @@ const scene = `
         </g>
       </g>
     ))}
-    {lanterns.map(({ x, y, face }, i) => (
+    {lanterns.map(({ x, y, w, face }, i) => (
       <g class="flicker" style={`animation-delay: ${(-i * 0.37).toFixed(2)}s`}>
         <ellipse cx={x} cy={y - 14} rx="62" ry="44" fill="url(#lantern-glow)" />
-        <path d={face} fill="#ffd86e" fill-rule="evenodd" stroke="#ffb347" stroke-width="1" />
+        <!-- A villager standing in front of the pumpkin hides its face: village.astro draws their
+             silhouettes into this mask (the glow around it still spills over them) -->
+        <mask id={`lantern-cut-${i}`} data-lantern-cut={y} maskUnits="userSpaceOnUse" x={x - w} y={y - w * 1.4} width={w * 2} height={w * 1.6}>
+          <rect x={x - w} y={y - w * 1.4} width={w * 2} height={w * 1.6} fill="#fff" />
+        </mask>
+        <path d={face} mask={`url(#lantern-cut-${i})`} fill="#ffd86e" fill-rule="evenodd" stroke="#ffb347" stroke-width="1" />
       </g>
     ))}
   </svg>

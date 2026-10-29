@@ -203,6 +203,16 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
     const night = new URLSearchParams(location.search).has('night');
     map.style.setProperty('--night-start', `${(night ? -330 : -Math.random() * 480).toFixed(1)}s`);
 
+    // The jack-o'-lanterns' lit faces glow over the night, which is over everything, so each villager's
+    // silhouette is cut out of the faces of the ones it's standing in front of (see the night layer in
+    // VillageScene.astro)
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const lanternDefs = map.querySelector('.lanterns defs')!;
+    const lanternCuts = [...map.querySelectorAll<SVGMaskElement>('[data-lantern-cut]')].map((mask) => ({
+      mask,
+      y: Number(mask.dataset.lanternCut),
+    }));
+
     const walkers = [...map.querySelectorAll<HTMLElement>('[data-walker]')].map((el, index) => {
       const { name, village: v } = villagers[el.dataset.walker!];
       const sprite = el.querySelector<HTMLElement>('.sprite')!;
@@ -212,8 +222,29 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
       let lastLine = -1;
       let greeting = false;
       let greetTimer = 0;
+      // Its silhouette for the lantern faces: the sprite sheet, cropped to the current frame
+      const cut = document.createElementNS(SVG_NS, 'svg');
+      cut.id = `villager-cut-${index}`;
+      cut.setAttribute('preserveAspectRatio', 'none');
+      const cutSheet = document.createElementNS(SVG_NS, 'image');
+      cutSheet.setAttribute('href', sprite.style.backgroundImage.match(/url\(["']?(.*?)["']?\)/)![1]);
+      cutSheet.setAttribute('width', String(v.frames * v.width));
+      cutSheet.setAttribute('height', String(v.height));
+      cutSheet.setAttribute('filter', 'url(#silhouette)');
+      cut.append(cutSheet);
+      lanternDefs.append(cut);
+      const cutUses = lanternCuts.map(({ mask }) => {
+        const use = document.createElementNS(SVG_NS, 'use');
+        use.setAttribute('href', `#${cut.id}`);
+        mask.append(use);
+        return use;
+      });
+      // The sprite's size in map units, before the depth scale (see .walker and .sprite below)
+      const spriteW = MAP.width * 0.05 * (v.width / 450);
+      const spriteH = spriteW * (v.height / v.width);
       const show = (frame: number) => {
         sprite.style.backgroundPositionX = `${(frame / (v.frames - 1)) * 100}%`;
+        cut.setAttribute('viewBox', `${frame * v.width} 0 ${v.width} ${v.height}`);
       };
 
       let { x, y } = randomSpot();
@@ -236,12 +267,19 @@ const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
         // A touch smaller further back, and further back walks behind closer things
         const depth = clamp((y - (WALKABLE.cy - WALKABLE.ry)) / (WALKABLE.ry * 2), 0, 1);
         el.style.translate = `${x * scale}px ${y * scale}px`;
-        el.style.scale = String(0.9 + depth * 0.1);
+        const s = 0.9 + depth * 0.1;
+        el.style.scale = String(s);
         // Held up off the ground; its shadow stays down where its feet would land
         sprite.style.translate = lift ? `0 ${-lift * scale}px` : '';
         // While carried it's held over everything; while thinking, its cloud goes over everything, even
         // the trees along the bottom
         el.style.zIndex = held || fall ? '7000' : greeting ? '6000' : String(Math.round(y));
+        // Where the sprite is drawn, for cutting it out of the lantern faces it's in front of
+        cut.setAttribute('x', (x - (s * spriteW) / 2).toFixed(1));
+        cut.setAttribute('y', (y + s * (0.02 * spriteW - spriteH - lift)).toFixed(1));
+        cut.setAttribute('width', (s * spriteW).toFixed(1));
+        cut.setAttribute('height', (s * spriteH).toFixed(1));
+        cutUses.forEach((use, i) => use.setAttribute('display', y > lanternCuts[i].y ? 'inline' : 'none'));
       };
 
       // Think something for a few seconds
